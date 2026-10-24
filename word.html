@@ -236,10 +236,9 @@ html, body {
     max-height: 0; opacity: 0; margin-top: 0;
     border-top: 1px solid transparent;
     overflow: hidden;
-    transition: max-height 0.45s cubic-bezier(0.35, 0.1, 0.2, 1), opacity 0.35s ease, margin-top 0.45s ease, border-color 0.3s;
 }
 .big-card.revealed .big-hint { opacity: 0; max-height: 0; margin-top: 0; }
-.big-card.revealed .big-answer { max-height: 460px; opacity: 1; margin-top: 26px; border-top-color: var(--line); }
+.big-card.revealed .big-answer { max-height: 460px; opacity: 1; margin-top: 26px; border-top-color: var(--line); transition: max-height 0.45s cubic-bezier(0.35, 0.1, 0.2, 1), opacity 0.35s ease, margin-top 0.45s ease, border-color 0.3s; }
 .big-answer .meaning-label { font-size: 11px; color: var(--text-3); letter-spacing: 2px; margin-bottom: 10px; }
 .big-answer .meaning { font-size: 22px; line-height: 1.7; color: var(--text); word-break: break-word; }
 
@@ -275,6 +274,8 @@ html, body {
 .act-btn.good { background: var(--green); color: #fff; box-shadow: 0 10px 24px rgba(53, 199, 138, 0.35); }
 .act-btn.easy { background: var(--accent); color: #fff; box-shadow: 0 10px 24px rgba(61, 123, 253, 0.35); }
 .study-foot-hint { text-align: center; font-size: 11px; color: var(--text-3); margin-top: 12px; letter-spacing: 0.5px; }
+.undo-btn { display: block; margin: 10px auto 0; border: none; background: rgba(23, 35, 59, 0.05); color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; padding: 7px 16px; border-radius: 999px; }
+.undo-btn:active { opacity: 0.6; }
 
 /* 空状态 */
 .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
@@ -518,6 +519,34 @@ html, body {
 .num-input { width: 72px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; font-weight: 700; text-align: center; background: #f5f7fb; color: var(--text); outline: none; font-family: inherit; }
 .num-input:focus { border-color: var(--accent); background: #fff; }
 .round-done-hint { font-size: 14px; color: var(--text-2); line-height: 1.6; margin-bottom: 6px; }
+
+/* 本轮完成（居中大卡片） */
+.round-mask { align-items: center; }
+.round-mask .round-card {
+    width: 88%; max-width: 440px;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+    border-radius: 28px;
+    padding: 38px 26px 30px;
+    text-align: center;
+    box-shadow: 0 18px 50px rgba(80, 110, 180, 0.24);
+    animation: roundPop 0.32s cubic-bezier(0.34, 1.4, 0.5, 1);
+    max-height: 86vh; overflow-y: auto;
+}
+@keyframes roundPop { from { transform: scale(0.88); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.round-mask .round-emoji { font-size: 62px; line-height: 1; margin-bottom: 10px; }
+.round-mask .round-title { font-size: 26px; font-weight: 800; letter-spacing: 0.5px; }
+.round-mask .round-stat { font-size: 15px; font-weight: 700; color: var(--accent); margin-top: 14px; }
+.round-mask .round-hint { font-size: 15px; color: var(--text-2); line-height: 1.7; margin-top: 14px; }
+.round-mask .round-btns { display: flex; flex-direction: column; gap: 12px; margin-top: 28px; }
+.round-mask .round-btns .btn {
+    width: 100%; border: none; border-radius: 15px; padding: 15px;
+    font-size: 16px; font-weight: 700; cursor: pointer; color: #fff;
+    background: linear-gradient(135deg, #3d7bfd, #6aa0ff);
+    box-shadow: 0 8px 20px rgba(61, 123, 253, 0.25);
+}
+.round-mask .round-btns .btn:active { transform: scale(0.97); }
+.round-mask .round-btns .btn.ghost { background: #eef1f7; color: var(--text); box-shadow: none; }
 .picker-item {
     display: flex; align-items: center; justify-content: space-between;
     padding: 15px 4px; border-bottom: 1px solid var(--line);
@@ -802,6 +831,7 @@ svg.ic { display: block; }
                 <button class="act-btn easy" onclick="grade(3)">秒记</button>
             </div>
             <div class="study-foot-hint" id="studyHint">先回想一下，选择「认识」或「不认识」</div>
+            <button class="undo-btn" id="undoBtn" onclick="undoLast()" style="display:none">↩ 撤销上一个</button>
         </div>
     </section>
 
@@ -1027,11 +1057,13 @@ above all 首先，尤其是"></textarea>
 </div>
 
 <!-- 本轮完成 -->
-<div class="sheet-mask" id="roundDoneMask" onclick="if(event.target===this) closeSheet('roundDoneMask')">
-    <div class="sheet">
-        <div class="s-title">本轮完成 🎉</div>
-        <div class="round-done-hint" id="roundDoneHint">这一组已经背完啦，接下来想怎么做？</div>
-        <div class="s-btns">
+<div class="sheet-mask round-mask" id="roundDoneMask" onclick="if(event.target===this) closeSheet('roundDoneMask')">
+    <div class="round-card">
+        <div class="round-emoji">🎉</div>
+        <div class="round-title">本轮完成！</div>
+        <div class="round-stat" id="roundDoneStat"></div>
+        <div class="round-hint" id="roundDoneHint">这一组已经背完啦</div>
+        <div class="round-btns">
             <button class="btn" onclick="continueSession()">继续学这本书</button>
             <button class="btn ghost" onclick="switchBook()">换本书</button>
             <button class="btn ghost" onclick="finishSession()">结束</button>
@@ -1107,6 +1139,7 @@ const OLD_KEY = "phrase_app_v1";
 const MODE_TIME_KEY = "phrase_mode_time_v1";
 const BOOK_TIME_KEY = "phrase_book_time_v1";
 const SETTINGS_KEY = "phrase_settings_v1";
+const LEARN_TASK_KEY = "phrase_learn_task_v1";
 const INTERVALS = [1, 2, 4, 7, 15, 30];   // 熟练度 1~6 对应的复习间隔（天）
 const NEW_STREAK_TARGET = 3;              // 学习新词：连续答对 3 次才算学完
 const APP_UPDATED = '2026-10-24';          // 版本更新时间：每次上传新版时手动改这一行
@@ -1131,6 +1164,8 @@ let pending = null;     // 阶段1 的选择：'know' | 'unknow'
 let sessionMode = null;   // null | 'new' | 'review' | 'randomBook' | 'randomAll'
 let learnedInSession = 0; // 学习新词本组已学完（连对 3 次）的词数
 let sessionTarget = 0;    // 本组学习任务的目标词数
+let lastAction = null;   // 撤销上一个打分用的快照
+let learnDone = 0;      // 学习任务已学完的新词数（跨会话保留）
 let editingBookId = null;
 let importTargetId = null;
 let selectedCover = 0;
@@ -1163,6 +1198,7 @@ function loadData() {
     loadModeLog();
     loadBookTimeLog();
     loadSettings();
+    loadLearnTask();
     let raw = localStorage.getItem(BOOK_KEY);
     if (raw) {
         try { books = JSON.parse(raw); } catch (e) { books = []; }
@@ -1503,7 +1539,9 @@ function emptyAction() {
 }
 
 function startLearn() {
-    const list = ph().filter(p => p.status === 0).slice(0, settings.learnCount || undefined);
+    let remain = (settings.learnCount || 10) - learnDone;
+    if (remain <= 0) { learnDone = 0; remain = settings.learnCount || 10; saveLearnTask(); }
+    const list = ph().filter(p => p.status === 0).slice(0, remain);
     enterSession(list, '学习新词', 'new');
 }
 function startReview() {
@@ -1563,8 +1601,9 @@ function enterSession(list, title, mode, startIndex) {
     currentIndex = Math.min(startIndex || 0, list.length - 1);
     phase = 'recall'; pending = null;
     sessionMode = mode;
-    learnedInSession = 0;
-    sessionTarget = (mode === 'new') ? list.length : 0;
+    learnedInSession = (mode === 'new') ? learnDone : 0;
+    sessionTarget = (mode === 'new') ? (settings.learnCount || 10) : 0;
+    lastAction = null;
     document.getElementById('sessionTitle').textContent = currentBook() ? currentBook().name : '词组记忆本';
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('studyDash').style.display = 'none';
@@ -1685,9 +1724,6 @@ function updateFavBtn() {
     const btn = document.getElementById('favBtn');
     if (btn && item) btn.textContent = item.fav ? '⭐' : '☆';
 }
-function prevCard() { if (currentIndex > 0) { currentIndex--; renderCard(); updateStats(); } }
-function nextCard() { if (currentIndex < currentList.length - 1) { currentIndex++; renderCard(); updateStats(); } }
-
 // —— 两阶段流程：回想 → 看答案/确认 → 打分（学习新词用 认识/不认识，复习用 4 档）——
 function setPhase(p) {
     phase = p;
@@ -1698,10 +1734,11 @@ function setPhase(p) {
     const left = document.getElementById("btnLeft");
     const right = document.getElementById("btnRight");
     const hint = document.getElementById("studyHint");
+    two.style.display = 'grid';
+    gradeBox.style.display = 'none';
+    two.style.gridTemplateColumns = '1fr 1fr';
+    left.style.display = '';
     if (p === 'recall') {
-        two.style.display = 'grid';
-        gradeBox.style.display = 'none';
-        left.style.display = '';
         if (isNew) {
             left.textContent = '不认识';
             left.className = 'act-btn unknow';
@@ -1712,30 +1749,37 @@ function setPhase(p) {
             hint.textContent = '先回想一下，选择「认识」或「不认识」';
         } else {
             left.style.display = 'none';
+            two.style.gridTemplateColumns = '1fr';
             right.textContent = '看答案';
             right.className = 'act-btn know';
             right.onclick = revealAnswer;
             hint.textContent = '先回想含义，再点「看答案」';
         }
     } else if (p === 'confirm') {
-        two.style.display = 'grid';
-        gradeBox.style.display = 'none';
-        left.style.display = '';
-        left.textContent = '认错';
-        left.className = 'act-btn unknow';
-        left.onclick = confirmWrong;
-        right.textContent = '下一个';
-        right.className = 'act-btn know';
-        right.onclick = confirmNext;
-        hint.textContent = pending === 'know' ? '你选了「认识」，看完释义点「下一个」' : '你选了「不认识」，看完释义点「下一个」';
+        if (pending === 'know') {
+            left.textContent = '认错';
+            left.className = 'act-btn unknow';
+            left.onclick = confirmWrong;
+            right.textContent = '下一个';
+            right.className = 'act-btn know';
+            right.onclick = confirmNext;
+            hint.textContent = '你选了「认识」，看完释义点「下一个」';
+        } else {
+            left.style.display = 'none';
+            two.style.gridTemplateColumns = '1fr';
+            right.textContent = '下一个';
+            right.className = 'act-btn know';
+            right.onclick = confirmNext;
+            hint.textContent = pending === 'wrong' ? '已认错，看完释义点「下一个」' : '你选了「不认识」，看完释义点「下一个」';
+        }
     } else { // grade：复习打分
         two.style.display = 'none';
         gradeBox.style.display = 'grid';
         hint.textContent = '你觉得记得怎么样？';
     }
 }
-function chooseKnow() { pending = 'know'; setPhase('confirm'); }
-function chooseUnknow() { pending = 'unknow'; setPhase('confirm'); }
+function chooseKnow() { pending = 'know'; setPhase('confirm'); updateStats(); }
+function chooseUnknow() { pending = 'unknow'; setPhase('confirm'); updateStats(); }
 function revealAnswer() { setPhase('grade'); }
 function grade(q) {
     const item = currentList[currentIndex]; if (!item) return;
@@ -1743,8 +1787,9 @@ function grade(q) {
 }
 // 学习新词的「认错/下一个」（仅新词模式调用）
 function confirmWrong() {
-    const item = currentList[currentIndex]; if (!item) return;
-    applyNewAnswer(item, false);
+    pending = 'wrong';      // 认错：不跳词，停留当前词，只留「下一个」
+    setPhase('confirm');
+    updateStats();
 }
 function confirmNext() {
     const item = currentList[currentIndex]; if (!item) return;
@@ -1777,6 +1822,7 @@ function scheduleReview(item, q) {
     }
 }
 function applyReviewAnswer(item, q) {
+    lastAction = { item: item, prev: snapPhrase(item), kind: (q === 0) ? 'requeue' : 'remove', learned: learnedInSession };
     item.status = 1;
     scheduleReview(item, q);
     if (q === 0) currentList.push(currentList.shift());  // 忘记 → 回炉
@@ -1789,6 +1835,7 @@ function applyReviewAnswer(item, q) {
 
 // —— 学习新词（不背单词式）：连续答对 3 次才学完，答错清零；学完移出队列，否则回队尾 ——
 function applyNewAnswer(item, correct) {
+    lastAction = { item: item, prev: snapPhrase(item), kind: (correct && ((item.streak || 0) + 1 >= NEW_STREAK_TARGET)) ? 'remove' : 'requeue', learned: learnedInSession, done: learnDone };
     if (correct) {
         item.streak = (item.streak || 0) + 1;
         if (item.streak >= NEW_STREAK_TARGET) {
@@ -1798,6 +1845,7 @@ function applyNewAnswer(item, correct) {
             item.interval = 1;
             item.nextReview = addDays(todayKey(), 1);
             learnedInSession++;
+            learnDone++; saveLearnTask();           // 计入学习任务进度
             currentList.shift();                    // 学完，移出队列
         } else {
             item.status = 0;
@@ -1810,6 +1858,7 @@ function applyNewAnswer(item, correct) {
     }
     saveBooks();
     if (currentList.length === 0 || learnedInSession >= settings.learnCount) {
+        learnDone = 0; saveLearnTask();             // 任务完成或无更多新词，重置任务进度
         setRoundDoneHint();
         openSheet('roundDoneMask');
     } else {
@@ -1817,26 +1866,48 @@ function applyNewAnswer(item, correct) {
     }
     updateStats();
 }
-function advance() {
-    updateStats();
-    if (currentIndex < currentList.length - 1) { currentIndex++; renderCard(); }
-    else { setRoundDoneHint(); openSheet('roundDoneMask'); }
-    updateStats();
+function snapPhrase(p) {
+    return { streak: p.streak, status: p.status, level: p.level, ease: p.ease, interval: p.interval, nextReview: p.nextReview };
 }
+function undoLast() {
+    if (!lastAction) return;
+    const a = lastAction;
+    lastAction = null;
+    Object.assign(a.item, a.prev);                 // 恢复上一个词的状态
+    if (a.kind === 'remove') {
+        currentList.unshift(a.item);               // 已学/通过：放回队首
+    } else {
+        const idx = currentList.lastIndexOf(a.item);
+        if (idx >= 0) currentList.splice(idx, 1);  // 回炉：从队尾取回
+        currentList.unshift(a.item);
+    }
+    learnedInSession = a.learned;
+    if (a.done !== undefined) { learnDone = a.done; saveLearnTask(); }
+    saveBooks();
+    closeSheet('roundDoneMask');
+    currentIndex = 0;
+    renderCard();
+    updateStats();
+    toast('已返回上一个词');
+}
+
 function setRoundDoneHint() {
     const hint = document.getElementById('roundDoneHint');
+    const stat = document.getElementById('roundDoneStat');
     if (sessionMode === 'new') {
         const left = books.flatMap(b => b.phrases).filter(p => p.status === 0).length;
-        hint.textContent = left > 0 ? `本组新词已学完，还剩 ${left} 个新词待学。` : '太棒了，所有新词都学完啦！🎉';
+        if (stat) stat.textContent = `本次任务学完 ${learnedInSession} 个新词`;
+        hint.textContent = left > 0 ? `还剩 ${left} 个新词待学` : '所有新词都学完啦！';
         return;
     }
+    if (stat) stat.textContent = '';
     const remaining = dueList(books.flatMap(b => b.phrases)).length;
     if (remaining <= 0) {
         const tomorrow = addDays(todayKey(), 1);
         const tomorrowDue = books.flatMap(b => b.phrases).filter(p => p.nextReview === tomorrow).length;
         hint.textContent = `今日复习任务已完成！明日待复习 ${tomorrowDue} 词。`;
     } else {
-        hint.textContent = '这一组已经背完啦，接下来想怎么做？';
+        hint.textContent = '这一组已经背完啦';
     }
 }
 function continueSession() {
@@ -1961,13 +2032,16 @@ function updateShowcaseData() {
 function updateStats() {
     if (sessionMode === 'new') {
         const item = currentList[0];
-        const s = item ? (item.streak || 0) : 0;
+        let s = item ? (item.streak || 0) : 0;
+        if (phase === 'confirm' && pending === 'know') s += 1;  // 点「认识」后当场预览 +1
         document.getElementById("progressText").textContent = `已学 ${learnedInSession} / ${sessionTarget} · 连对 ${s}/3`;
     } else if (sessionMode === 'review' || sessionMode === 'randomBook' || sessionMode === 'randomAll') {
         document.getElementById("progressText").textContent = `剩余 ${currentList.length} 个`;
     } else {
         document.getElementById("progressText").textContent = `${currentIndex + 1} / ${currentList.length}`;
     }
+    const undoBtn = document.getElementById('undoBtn');
+    if (undoBtn) undoBtn.style.display = lastAction ? 'block' : 'none';
 }
 
 // ============ 生词 ============
@@ -2149,11 +2223,6 @@ function addDays(dateStr, n) {
     d.setDate(d.getDate() + n);
     return todayKey(d);
 }
-function intervalDays(level) {
-    const lv = level || 0;
-    if (lv <= 0) return 1;
-    return INTERVALS[Math.min(lv, 6) - 1] || 30;
-}
 function isDue(p) { return !!p.nextReview && p.nextReview <= todayKey(); }
 function dueList(phrases) { return phrases.filter(isDue); }
 function loadTimeLog() { try { timeLog = JSON.parse(localStorage.getItem(TIME_KEY)) || {}; } catch (e) { timeLog = {}; } }
@@ -2164,6 +2233,8 @@ function loadBookTimeLog() { try { bookTimeLog = JSON.parse(localStorage.getItem
 function saveBookTimeLog() { localStorage.setItem(BOOK_TIME_KEY, JSON.stringify(bookTimeLog)); }
 function loadSettings() { try { settings = Object.assign({ autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch (e) { settings = { autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }; } }
 function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+function loadLearnTask() { try { learnDone = parseInt(localStorage.getItem(LEARN_TASK_KEY), 10) || 0; } catch (e) { learnDone = 0; } }
+function saveLearnTask() { localStorage.setItem(LEARN_TASK_KEY, String(learnDone)); }
 function flushTime() {
     if (pendingSeconds <= 0) return;
     const k = todayKey();
@@ -2367,6 +2438,7 @@ function resetProgress() {
         p.interval = 1;
     }));
     saveBooks();
+    learnDone = 0; saveLearnTask();
     if (sessionMode !== null) renderCard();
     renderDashboard();
     updateStats();
