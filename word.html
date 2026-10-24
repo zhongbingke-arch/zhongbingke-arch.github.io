@@ -230,6 +230,8 @@ html, body {
 }
 .big-word { font-size: 38px; font-weight: 800; letter-spacing: 0.3px; line-height: 1.3; color: var(--text); word-break: break-word; }
 .big-word.small { font-size: 27px; }
+.big-pos { font-size: 12px; color: var(--text-3); letter-spacing: 1px; margin-top: 8px; }
+.pos-tag { display: inline-block; font-size: 11px; color: var(--text-3); background: rgba(23, 35, 59, 0.06); padding: 1px 6px; border-radius: 6px; margin-left: 6px; font-weight: 500; }
 .big-hint { margin-top: 24px; font-size: 13px; color: var(--text-3); letter-spacing: 1px; max-height: 40px; overflow: hidden; transition: opacity 0.25s ease, max-height 0.3s ease, margin-top 0.3s ease; }
 .big-answer {
     width: 100%;
@@ -841,6 +843,7 @@ svg.ic { display: block; }
                     <button class="fav-btn" id="favBtn" onclick="event.stopPropagation(); toggleFav()">☆</button>
                     <button class="speak-btn" id="speakBtn" onclick="event.stopPropagation(); speakCurrent()"><svg class="ic" viewBox="0 0 48 48"><ellipse cx="24" cy="43.5" rx="17" ry="4.5" fill="#d94a4a" opacity="0.30"/><rect x="3" y="3" width="42" height="42" rx="13" fill="url(#ic-volume)"/><rect x="7" y="5" width="34" height="9" rx="4.5" fill="#fff" opacity="0.32"/><g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></g></svg></button>
                     <div class="big-word" id="cardFront">点击开始</div>
+                    <div class="big-pos" id="posTag" style="display:none"></div>
                     <div class="big-hint">先回想含义，再在下方选择</div>
                     <div class="big-answer">
                         <div class="meaning-label">释 义</div>
@@ -1446,10 +1449,11 @@ function renderPhraseList() {
     list.innerHTML = b.phrases.map(p => {
         const sel = phraseSelected.has(p.eng);
         const click = phraseMultiSelect ? `togglePhraseSelect('${escapeAttr(p.eng)}')` : `openPhraseEdit('${escapeAttr(p.eng)}')`;
+        const { word, pos } = splitPos(p.eng);
         return `<div class="phrase-item" onclick="${click}">
             ${phraseMultiSelect ? `<span class="fav-check" style="background:${sel ? 'var(--accent)' : 'transparent'};color:#fff">${sel ? '✓' : ''}</span>` : ''}
             <div style="flex:1;min-width:0">
-                <div class="p-eng">${escapeHtml(p.eng)}</div>
+                <div class="p-eng">${escapeHtml(word)}${pos ? `<span class="pos-tag">${escapeHtml(pos)}</span>` : ''}</div>
                 <div class="p-chn">${escapeHtml(p.chn)}</div>
             </div>
         </div>`;
@@ -1754,16 +1758,30 @@ function stopTimer() { clearInterval(timer); flushTime(); }
 function updateTimerText() {}
 
 // —— 卡片 ——
+// 词性缩写列表（用于把 eng 里的词性从单词里拆出来，单独显示，不改存储数据）
+const POS_TAGS = ['vt', 'vi', 'v', 'n', 'adj', 'adv', 'prep', 'conj', 'pron', 'num', 'art', 'interj', 'aux', 'abbr', 'pl', 'sing', 'phr'];
+function splitPos(text) {
+    const s = String(text).trim();
+    const norm = (t) => t.toLowerCase().replace(/\.+$/, '');
+    const tail = s.match(/^(.*?)\s+([a-z-]+\.?)\s*$/i);
+    if (tail && POS_TAGS.includes(norm(tail[2]))) return { word: tail[1].trim(), pos: tail[2] };
+    const head = s.match(/^\s*([a-z-]+\.?)\s+(.+)$/i);
+    if (head && POS_TAGS.includes(norm(head[1]))) return { word: head[2].trim(), pos: head[1] };
+    return { word: s, pos: '' };
+}
 function renderCard() {
     if (currentList.length === 0) return;
     const item = currentList[currentIndex];
+    const { word, pos } = splitPos(item.eng);
     const front = document.getElementById("cardFront");
-    front.textContent = item.eng;
-    front.classList.toggle('small', item.eng.length > 24);
+    front.textContent = word;
+    front.classList.toggle('small', word.length > 24);
+    const posEl = document.getElementById('posTag');
+    if (posEl) { posEl.textContent = pos; posEl.style.display = pos ? '' : 'none'; }
     document.getElementById("cardBack").textContent = item.chn;
     setPhase('recall');
     updateFavBtn();
-    if (settings.autoSpeak) speak(item.eng);
+    if (settings.autoSpeak) speak(word);
 }
 function toggleFav() {
     const item = currentList[currentIndex]; if (!item) return;
@@ -2118,15 +2136,16 @@ function renderFavList() {
     }
     empty.style.display = 'none';
     const itemHtml = (p) => {
+        const { word, pos } = splitPos(p.eng);
         const click = favMultiSelect ? `toggleFavSelect('${escapeAttr(p.eng)}')` : 'toggleFavMeaning(this)';
         return `<div class="fav-item${favSelected.has(p.eng) ? ' selected' : ''}" data-eng="${escapeAttr(p.eng)}" ontouchstart="favStart(event, this)" ontouchend="favEnd(event, this)">
             <div class="fav-slide">
                 ${favMultiSelect ? `<span class="fav-check">${favSelected.has(p.eng) ? '✓' : ''}</span>` : ''}
                 <div class="fav-body" onclick="${click}">
-                    <div class="fav-eng">${escapeHtml(p.eng)}</div>
+                    <div class="fav-eng">${escapeHtml(word)}${pos ? `<span class="pos-tag">${escapeHtml(pos)}</span>` : ''}</div>
                     <div class="fav-chn">${escapeHtml(p.chn)}</div>
                 </div>
-                <button class="fav-speak" onclick="event.stopPropagation(); speak('${escapeAttr(p.eng)}')"><svg class="ic" viewBox="0 0 48 48"><ellipse cx="24" cy="43.5" rx="17" ry="4.5" fill="#d94a4a" opacity="0.30"/><rect x="3" y="3" width="42" height="42" rx="13" fill="url(#ic-volume)"/><rect x="7" y="5" width="34" height="9" rx="4.5" fill="#fff" opacity="0.32"/><g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></g></svg></button>
+                <button class="fav-speak" onclick="event.stopPropagation(); speak('${escapeAttr(word)}')"><svg class="ic" viewBox="0 0 48 48"><ellipse cx="24" cy="43.5" rx="17" ry="4.5" fill="#d94a4a" opacity="0.30"/><rect x="3" y="3" width="42" height="42" rx="13" fill="url(#ic-volume)"/><rect x="7" y="5" width="34" height="9" rx="4.5" fill="#fff" opacity="0.32"/><g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></g></svg></button>
             </div>
             <button class="fav-del" onclick="removeFav('${escapeAttr(p.eng)}')">删除</button>
         </div>`;
@@ -2300,7 +2319,7 @@ function speak(text) {
     if (btn) { btn.classList.add('speaking'); u.onend = u.onerror = () => btn.classList.remove('speaking'); }
     speechSynthesis.speak(u);
 }
-function speakCurrent() { const item = currentList[currentIndex]; if (item) speak(item.eng); }
+function speakCurrent() { const item = currentList[currentIndex]; if (item) speak(splitPos(item.eng).word); }
 
 // ============ 学习时长 ============
 function todayKey(d) {
