@@ -460,10 +460,10 @@ html, body {
     border: 1px solid var(--line); border-radius: 14px;
     font-size: 14px; line-height: 1.6; resize: none;
     background: #f5f7fb; color: var(--text); outline: none;
-    user-select: text; -webkit-user-select: text; font-family: inherit;
+    user-select: text; -webkit-user-select: text; -webkit-touch-callout: default; font-family: inherit;
 }
 .sheet textarea:focus { border-color: var(--accent); background: #fff; }
-.sheet .field { width: 100%; padding: 13px 14px; border: 1px solid var(--line); border-radius: 14px; font-size: 15px; background: #f5f7fb; color: var(--text); outline: none; font-family: inherit; }
+.sheet .field { width: 100%; padding: 13px 14px; border: 1px solid var(--line); border-radius: 14px; font-size: 15px; background: #f5f7fb; color: var(--text); outline: none; font-family: inherit; user-select: text; -webkit-user-select: text; -webkit-touch-callout: default; }
 .sheet .field:focus { border-color: var(--accent); background: #fff; }
 .sheet .s-label { font-size: 13px; color: var(--text-2); margin: 14px 0 8px; font-weight: 600; }
 .sheet .s-btns { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
