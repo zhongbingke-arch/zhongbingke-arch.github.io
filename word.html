@@ -382,6 +382,27 @@ html, body {
 .week-col.today .week-bar { background: var(--accent); }
 .week-day { font-size: 10px; color: var(--text-3); }
 
+/* 月历 */
+.p-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.p-title-row .p-title { margin-bottom: 0; }
+.cal-nav { display: flex; align-items: center; gap: 4px; }
+.cal-arrow { width: 28px; height: 28px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--text-2); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.cal-arrow:active { transform: scale(0.92); }
+.cal-title { font-size: 14px; font-weight: 700; min-width: 92px; text-align: center; }
+.cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 11px; color: var(--text-3); margin: 4px 0 6px; }
+.cal-weekdays span { padding: 2px 0; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-day { aspect-ratio: 1; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 13px; color: var(--text); }
+.cal-day.out { opacity: 0.22; }
+.cal-day .cd-num { font-weight: 700; line-height: 1; }
+.cal-day .cd-time { font-size: 8.5px; color: var(--text-3); margin-top: 2px; line-height: 1; }
+.cal-day.has { background: #eef4ff; }
+.cal-day.more { background: #d7e6ff; }
+.cal-day.lot { background: #bcd6ff; }
+.cal-day.has .cd-time, .cal-day.more .cd-time, .cal-day.lot .cd-time { color: #4a6fa8; }
+.cal-day.today { box-shadow: 0 0 0 2px var(--accent); }
+.cal-summary { margin-top: 10px; text-align: center; font-size: 12px; color: var(--text-2); }
+
 .menu-list { display: flex; flex-direction: column; }
 .menu-item {
     display: flex; align-items: center; justify-content: space-between;
@@ -839,6 +860,20 @@ svg.ic { display: block; }
             </div>
 
             <div class="panel">
+                <div class="p-title-row">
+                    <div class="p-title">月历</div>
+                    <div class="cal-nav">
+                        <button class="cal-arrow" onclick="calPrevMonth()">‹</button>
+                        <span class="cal-title" id="calTitle">本月</span>
+                        <button class="cal-arrow" onclick="calNextMonth()">›</button>
+                    </div>
+                </div>
+                <div class="cal-weekdays"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+                <div class="cal-grid" id="calGrid"></div>
+                <div class="cal-summary" id="calSummary"></div>
+            </div>
+
+            <div class="panel">
                 <div class="p-title">数据与备份</div>
                 <div class="menu-list">
                     <button class="menu-item" onclick="openImport()"><span><span class="mi-icon"><svg class="ic" viewBox="0 0 48 48"><ellipse cx="24" cy="43.5" rx="17" ry="4.5" fill="#2779cc" opacity="0.30"/><rect x="3" y="3" width="42" height="42" rx="13" fill="url(#ic-down)"/><rect x="7" y="5" width="34" height="9" rx="4.5" fill="#fff" opacity="0.32"/><g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></g></svg></span>导入词组</span><span class="mi-arrow">›</span></button>
@@ -1080,6 +1115,8 @@ let phraseBookId = null;
 let phraseMultiSelect = false;
 let phraseSelected = new Set();
 let editingPhraseKey = null;
+let calYear = null;
+let calMonth = null;
 let timeLog = {};
 let modeLog = {};
 let bookTimeLog = {};
@@ -1143,7 +1180,7 @@ function switchTab(id) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
     if (id === 'pageBooks') renderBooks();
     if (id === 'pageReview') renderFavList();
-    if (id === 'pageStats') { renderShowcase(); updateTimeStats(); renderWeekBars(); }
+    if (id === 'pageStats') { renderShowcase(); updateTimeStats(); renderWeekBars(); renderMonthCalendar(); }
 }
 
 function openSheet(id) { document.getElementById(id).classList.add('show'); }
@@ -2087,6 +2124,36 @@ function renderWeekBars() {
     bars.innerHTML = html;
 }
 
+// ============ 月历 ============
+function renderMonthCalendar() {
+    const grid = document.getElementById('calGrid');
+    if (!grid) return;
+    if (calYear === null) { const d = new Date(); calYear = d.getFullYear(); calMonth = d.getMonth(); }
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const startDow = new Date(calYear, calMonth, 1).getDay();
+    const today = todayKey();
+    let monthSec = 0, monthDays = 0;
+    let html = '';
+    for (let i = 0; i < startDow; i++) html += `<div class="cal-day out"></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+        const key = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const sec = timeLog[key] || 0;
+        if (sec > 0) { monthSec += sec; monthDays++; }
+        const cls = sec >= 3600 ? ' lot' : sec >= 900 ? ' more' : (sec > 0 ? ' has' : '');
+        const min = Math.round(sec / 60);
+        const timeStr = sec > 0 ? (min < 60 ? min + '分' : Math.floor(min / 60) + '时') : '';
+        html += `<div class="cal-day${cls}${key === today ? ' today' : ''}">
+            <div class="cd-num">${d}</div>
+            ${timeStr ? `<div class="cd-time">${timeStr}</div>` : ''}
+        </div>`;
+    }
+    grid.innerHTML = html;
+    document.getElementById('calTitle').textContent = `${calYear}年${calMonth + 1}月`;
+    document.getElementById('calSummary').textContent = `本月共背 ${fmtDuration(monthSec)} · 打卡 ${monthDays} 天`;
+}
+function calPrevMonth() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderMonthCalendar(); }
+function calNextMonth() { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderMonthCalendar(); }
+
 // ============ 备份 ============
 function exportBackup() {
     if (!books.length) { toast("暂无数据可导出"); return; }
@@ -2207,6 +2274,7 @@ window.onload = function () {
     updateStats();
     updateTimeStats();
     renderWeekBars();
+    renderMonthCalendar();
     if ('speechSynthesis' in window) {
         speechSynthesis.getVoices();
         speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
