@@ -508,6 +508,9 @@ html, body {
 .setting-row:last-child { border-bottom: none; }
 .setting-name { font-size: 15px; font-weight: 700; }
 .setting-desc { font-size: 12px; color: var(--text-3); margin-top: 3px; }
+.voice-row { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.voice-row .setting-desc { margin-bottom: 8px; }
+.voice-select { width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; font-size: 15px; background: #f5f7fb; color: var(--text); outline: none; }
 .switch { position: relative; display: inline-block; width: 48px; height: 28px; flex-shrink: 0; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .switch .slider { position: absolute; inset: 0; background: #dfe6f2; border-radius: 999px; transition: 0.25s; cursor: pointer; }
@@ -1073,6 +1076,11 @@ above all 首先，尤其是"></textarea>
             </div>
             <label class="switch"><input type="checkbox" id="setShuffle" onchange="saveSessionSettings()"><span class="slider"></span></label>
         </div>
+        <div class="voice-row">
+            <div class="setting-name">发音音色</div>
+            <div class="setting-desc">选择朗读时使用的声音</div>
+            <select id="setVoice" class="voice-select" onchange="saveVoice()"></select>
+        </div>
         <div class="s-btns">
             <button class="btn" onclick="closeSheet('sessionSettingsMask')">完成</button>
         </div>
@@ -1165,7 +1173,15 @@ const SETTINGS_KEY = "phrase_settings_v1";
 const LEARN_TASK_KEY = "phrase_learn_task_v1";
 const INTERVALS = [1, 2, 4, 7, 15, 30];   // 熟练度 1~6 对应的复习间隔（天）
 const NEW_STREAK_TARGET = 3;              // 学习新词：连续答对 3 次才算学完
-const APP_UPDATED = '2026-10-24 17:31';       // 版本更新时间：每次上传新版时手动改这一行（精确到分）
+// 版本更新时间：自动取文件最后修改时间（上传新版后自动变，无需手动改）
+function appUpdatedTime() {
+    const raw = document.lastModified;
+    if (!raw) return '';
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return raw;
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 const COVERS = [
     { bg: "linear-gradient(135deg,#3d7bfd,#6aa0ff)" },
@@ -1207,7 +1223,7 @@ let bookTimeLog = {};
 let pendingSeconds = 0;
 let timer = null;
 let seconds = 0;
-let settings = { autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 };
+let settings = { autoSpeak: true, shuffle: false, voice: '', learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 };
 const MODE_LABELS = { new: '学习新词', review: '复习旧词', randomBook: '随机复习', randomAll: '全库随机' };
 
 // —— 数据 ——
@@ -1673,9 +1689,25 @@ function praiseText(totalSec) {
     if (m < 60) return '太厉害了，这份坚持真的很了不起！';
     return '学霸模式开启，今天超额完成，太棒了！';
 }
+function populateVoiceSelect() {
+    const sel = document.getElementById('setVoice');
+    if (!sel) return;
+    const voices = speechSynthesis.getVoices().filter(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+    let html = `<option value="">自动（默认女声）</option>`;
+    for (const v of voices) {
+        const selAttr = (settings.voice === v.name) ? ' selected' : '';
+        html += `<option value="${escapeAttr(v.name)}"${selAttr}>${escapeHtml(v.name)}</option>`;
+    }
+    sel.innerHTML = html;
+}
+function saveVoice() {
+    settings.voice = document.getElementById('setVoice').value;
+    saveSettings();
+}
 function openSessionSettings() {
     document.getElementById('setAutoSpeak').checked = settings.autoSpeak;
     document.getElementById('setShuffle').checked = settings.shuffle;
+    populateVoiceSelect();
     openSheet('sessionSettingsMask');
 }
 function saveSessionSettings() {
@@ -2241,14 +2273,29 @@ function expandForSpeech(text) {
     t = t.replace(/\s*\/\s*/g, ', ');   // 斜杠 → 逗号，朗读时停顿一下
     return t;
 }
+// 优先选择女声（英文），并偏好更清晰的 Enhanced/Premium/Natural 音色
+const FEMALE_HINTS = ['female', 'woman', 'samantha', 'karen', 'victoria', 'serena', 'allison', 'ava', 'susan', 'zira', 'aria', 'jenny', 'kate', 'joanna', 'catherine', 'fiona', 'moira', 'tessa', 'siri', 'nikki', 'veena', 'amy'];
+const MALE_HINTS = ['male', 'man', 'daniel', 'alex', 'fred', 'tom', 'david', 'mark', 'aaron', 'george', 'oliver', 'ryan'];
+function pickVoice() {
+    const voices = speechSynthesis.getVoices();
+    const en = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+    if (!en.length) return null;
+    if (settings.voice) {   // 手动选择的音色优先
+        const chosen = en.find(v => v.name === settings.voice) || voices.find(v => v.name === settings.voice);
+        if (chosen) return chosen;
+    }
+    const females = en.filter(v => FEMALE_HINTS.some(h => v.name.toLowerCase().includes(h)));
+    const candidates = females.length ? females : en.filter(v => !MALE_HINTS.some(h => v.name.toLowerCase().includes(h)));
+    const pool = candidates.length ? candidates : en;
+    return pool.find(v => /enhanced|premium|natural/i.test(v.name)) || pool[0];
+}
 function speak(text) {
     if (!('speechSynthesis' in window)) { toast("当前浏览器不支持语音"); return; }
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(expandForSpeech(text));
-    u.lang = 'en-US'; u.rate = 0.88;
-    const voices = speechSynthesis.getVoices();
-    const en = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
-    if (en) u.voice = en;
+    u.lang = 'en-US'; u.rate = 0.85;
+    const v = pickVoice();
+    if (v) u.voice = v;
     const btn = document.getElementById('speakBtn');
     if (btn) { btn.classList.add('speaking'); u.onend = u.onerror = () => btn.classList.remove('speaking'); }
     speechSynthesis.speak(u);
@@ -2276,7 +2323,7 @@ function loadModeLog() { try { modeLog = JSON.parse(localStorage.getItem(MODE_TI
 function saveModeLog() { localStorage.setItem(MODE_TIME_KEY, JSON.stringify(modeLog)); }
 function loadBookTimeLog() { try { bookTimeLog = JSON.parse(localStorage.getItem(BOOK_TIME_KEY)) || {}; } catch (e) { bookTimeLog = {}; } }
 function saveBookTimeLog() { localStorage.setItem(BOOK_TIME_KEY, JSON.stringify(bookTimeLog)); }
-function loadSettings() { try { settings = Object.assign({ autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch (e) { settings = { autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }; } }
+function loadSettings() { try { settings = Object.assign({ autoSpeak: true, shuffle: false, voice: '', learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch (e) { settings = { autoSpeak: true, shuffle: false, voice: '', learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }; } }
 function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
 function loadLearnTask() { try { learnDone = parseInt(localStorage.getItem(LEARN_TASK_KEY), 10) || 0; } catch (e) { learnDone = 0; } }
 function saveLearnTask() { localStorage.setItem(LEARN_TASK_KEY, String(learnDone)); }
@@ -2426,14 +2473,14 @@ function importBackup(e) {
                 timeLog = raw.timeLog || {};
                 modeLog = raw.modeLog || {};
                 bookTimeLog = raw.bookTimeLog || {};
-                if (raw.settings) settings = Object.assign({ autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
+                if (raw.settings) settings = Object.assign({ autoSpeak: true, shuffle: false, voice: '', learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
                 saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveSettings();
             } else if (raw.phrases) {
                 books = [{ id: genId(), name: "导入的词组", cover: 0, phrases: raw.phrases }];
                 timeLog = raw.timeLog || {};
                 modeLog = raw.modeLog || {};
                 bookTimeLog = raw.bookTimeLog || {};
-                if (raw.settings) settings = Object.assign({ autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
+                if (raw.settings) settings = Object.assign({ autoSpeak: true, shuffle: false, voice: '', learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
                 saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveSettings();
             } else {
                 throw new Error('bad');
@@ -2501,7 +2548,8 @@ function escapeAttr(s) { return String(s).replace(/\\/g, "\\\\").replace(/'/g, "
 // —— 启动 ——
 window.onload = function () {
     loadData();
-    document.getElementById('appUpdateTime').textContent = '更新 ' + APP_UPDATED;
+    const upd = appUpdatedTime();
+    document.getElementById('appUpdateTime').textContent = upd ? '更新 ' + upd : '';
     renderBooks();
     renderDashboard();
     updateStats();
