@@ -1039,7 +1039,7 @@ above all 首先，尤其是"></textarea>
         <div class="setting-row">
             <div class="setting-text">
                 <div class="setting-name">自动发音</div>
-                <div class="setting-desc">进入新词时自动朗读</div>
+                <div class="setting-desc">进入每个单词时自动朗读</div>
             </div>
             <label class="switch"><input type="checkbox" id="setAutoSpeak" onchange="saveSessionSettings()"><span class="slider"></span></label>
         </div>
@@ -1184,7 +1184,7 @@ let bookTimeLog = {};
 let pendingSeconds = 0;
 let timer = null;
 let seconds = 0;
-let settings = { autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 };
+let settings = { autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 };
 const MODE_LABELS = { new: '学习新词', review: '复习旧词', randomBook: '随机复习', randomAll: '全库随机' };
 
 // —— 数据 ——
@@ -2196,10 +2196,30 @@ function importWords() {
 }
 
 // ============ 语音 ============
+// 朗读前的缩写展开表：只影响发音，不改显示原文
+const SPEECH_EXPAND = {
+    'sth': 'something',
+    'sb': 'somebody',
+    'etc': 'etcetera',
+    'eg': 'for example',
+    'ie': 'that is',
+    'vs': 'versus',
+    'adj': 'adjective',
+    'adv': 'adverb',
+    'prep': 'preposition',
+    'conj': 'conjunction',
+    'pron': 'pronoun',
+};
+function expandForSpeech(text) {
+    return String(text).replace(/[A-Za-z]+\.?/g, (tok) => {
+        const key = tok.toLowerCase().replace(/\.+$/, '');
+        return SPEECH_EXPAND[key] || tok;
+    });
+}
 function speak(text) {
     if (!('speechSynthesis' in window)) { toast("当前浏览器不支持语音"); return; }
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance(expandForSpeech(text));
     u.lang = 'en-US'; u.rate = 0.88;
     const voices = speechSynthesis.getVoices();
     const en = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
@@ -2231,7 +2251,7 @@ function loadModeLog() { try { modeLog = JSON.parse(localStorage.getItem(MODE_TI
 function saveModeLog() { localStorage.setItem(MODE_TIME_KEY, JSON.stringify(modeLog)); }
 function loadBookTimeLog() { try { bookTimeLog = JSON.parse(localStorage.getItem(BOOK_TIME_KEY)) || {}; } catch (e) { bookTimeLog = {}; } }
 function saveBookTimeLog() { localStorage.setItem(BOOK_TIME_KEY, JSON.stringify(bookTimeLog)); }
-function loadSettings() { try { settings = Object.assign({ autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch (e) { settings = { autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }; } }
+function loadSettings() { try { settings = Object.assign({ autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch (e) { settings = { autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }; } }
 function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
 function loadLearnTask() { try { learnDone = parseInt(localStorage.getItem(LEARN_TASK_KEY), 10) || 0; } catch (e) { learnDone = 0; } }
 function saveLearnTask() { localStorage.setItem(LEARN_TASK_KEY, String(learnDone)); }
@@ -2381,14 +2401,14 @@ function importBackup(e) {
                 timeLog = raw.timeLog || {};
                 modeLog = raw.modeLog || {};
                 bookTimeLog = raw.bookTimeLog || {};
-                if (raw.settings) settings = Object.assign({ autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
+                if (raw.settings) settings = Object.assign({ autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
                 saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveSettings();
             } else if (raw.phrases) {
                 books = [{ id: genId(), name: "导入的词组", cover: 0, phrases: raw.phrases }];
                 timeLog = raw.timeLog || {};
                 modeLog = raw.modeLog || {};
                 bookTimeLog = raw.bookTimeLog || {};
-                if (raw.settings) settings = Object.assign({ autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
+                if (raw.settings) settings = Object.assign({ autoSpeak: true, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
                 saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveSettings();
             } else {
                 throw new Error('bad');
