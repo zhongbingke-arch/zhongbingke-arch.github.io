@@ -36,6 +36,8 @@
     --shadow: 0 1px 2px rgba(80, 110, 180, 0.05), 0 18px 44px rgba(80, 110, 180, 0.12);
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
     --blur: blur(26px) saturate(170%);
 }
 
@@ -129,6 +131,16 @@ html, body {
     word-break: break-word;
 }
 .book-meta { color: rgba(255, 255, 255, 0.92); font-size: 12px; margin-top: 8px; }
+.book-time { color: rgba(255, 255, 255, 0.85); font-size: 11px; margin-top: 5px; }
+.book-check {
+    position: absolute; top: 10px; right: 10px; z-index: 8;
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2px solid #fff; color: #fff;
+    background: rgba(0, 0, 0, 0.18); font-size: 15px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+}
+.book-cover.book-sel { box-shadow: 0 0 0 3px #fff, 0 12px 28px rgba(80, 110, 180, 0.30); }
+.book-cover.book-sel .book-check { background: var(--accent); }
 .book-more {
     position: absolute; top: 10px; right: 10px;
     width: 30px; height: 30px; border-radius: 50%;
@@ -360,7 +372,7 @@ html, body {
     padding: 16px; margin-bottom: 12px;
 }
 .panel .p-title { font-size: 13px; color: var(--text-3); margin-bottom: 12px; font-weight: 600; }
-.time-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.time-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .time-cell { text-align: center; }
 .time-cell .tc-num { font-size: 17px; font-weight: 800; }
 .time-cell .tc-label { font-size: 11px; color: var(--text-3); margin-top: 3px; }
@@ -591,6 +603,43 @@ svg.ic { display: block; }
     border: 1px solid rgba(255,255,255,0.6); box-shadow: var(--shadow);
 }
 .fav-multicount { font-size: 14px; font-weight: 700; color: var(--text-2); }
+
+/* 词组管理 */
+.book-actions { display: flex; gap: 8px; margin-top: 10px; }
+.book-actions .book-import { flex: 1; margin-top: 0; }
+.phrase-sheet { display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; }
+.phrase-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.phrase-head .s-title { margin-bottom: 0; }
+.phrase-close { width: 32px; height: 32px; border-radius: 50%; border: none; background: #eef1f7; color: var(--text-2); font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.phrase-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.phrase-toolbar .btn { padding: 9px 16px; border: none; border-radius: 12px; font-size: 13px; font-weight: 700; cursor: pointer; color: #fff; background: linear-gradient(135deg, #3d7bfd, #6aa0ff); }
+.phrase-toolbar .btn.ghost { background: #eef1f7; color: var(--text); }
+.phrase-count { margin-left: auto; font-size: 13px; color: var(--text-3); }
+.phrase-multibar { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; margin-bottom: 6px; }
+.phrase-multibar .mc { font-size: 14px; font-weight: 700; color: var(--text-2); }
+.phrase-list { flex: 1; overflow-y: auto; min-height: 120px; -webkit-overflow-scrolling: touch; }
+.phrase-item { display: flex; align-items: center; gap: 10px; padding: 13px 2px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.phrase-item:last-child { border-bottom: none; }
+.phrase-item .p-eng { font-size: 16px; font-weight: 700; word-break: break-word; }
+.phrase-item .p-chn { font-size: 13px; color: var(--text-2); margin-top: 3px; word-break: break-word; }
+.phrase-empty { padding: 30px 10px; text-align: center; color: var(--text-3); font-size: 13px; line-height: 1.7; }
+
+/* ============ 平板横屏模式 ============ */
+@media (orientation: landscape) and (min-width: 768px) {
+    .app {
+        max-width: 1080px;
+        padding-left: calc(var(--safe-left) + 28px);
+        padding-right: calc(var(--safe-right) + 28px);
+    }
+    .sheet { max-width: 720px; }
+    .books-grid { grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .study-dash { grid-template-columns: repeat(4, 1fr); }
+    .study-session { max-width: 760px; margin: 0 auto; width: 100%; }
+    .big-word { font-size: 46px; }
+    .big-word.small { font-size: 32px; }
+    .big-answer .meaning { font-size: 26px; }
+    .big-card { padding: 70px 44px 48px; }
+}
 </style>
 </head>
 <body>
@@ -624,9 +673,20 @@ svg.ic { display: block; }
     <section class="page active" id="pageBooks">
         <div class="topbar">
             <div class="brand"><div class="logo"><svg class="ic" viewBox="0 0 48 48"><ellipse cx="24" cy="43.5" rx="17" ry="4.5" fill="#2b5cc9" opacity="0.30"/><rect x="3" y="3" width="42" height="42" rx="13" fill="url(#ic-book)"/><rect x="7" y="5" width="34" height="9" rx="4.5" fill="#fff" opacity="0.32"/><g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></g></svg></div><div><div class="name">我的书库</div></div></div>
-            <button class="icon-btn" onclick="createBook()">＋</button>
+            <div class="topbar-right">
+                <button class="fav-multibtn" id="bookSortBtn" onclick="toggleBookSort()">最新在前</button>
+                <button class="fav-multibtn" id="bookMultiBtn" onclick="toggleBookMulti()">多选</button>
+                <button class="icon-btn" onclick="createBook()">＋</button>
+            </div>
         </div>
         <div class="scroll">
+            <div class="fav-multibar" id="bookMultiBar" style="display:none">
+                <span class="fav-multicount" id="bookMultiCount">已选 0 本</span>
+                <div style="display:flex;gap:8px">
+                    <button class="btn-primary" onclick="deleteSelectedBooks()">删除选中</button>
+                    <button class="btn ghost" onclick="toggleBookMulti()">完成</button>
+                </div>
+            </div>
             <div class="books-grid" id="bookGrid"></div>
             <div class="empty" id="booksEmpty" style="display:none">
                 <div class="emoji">📚</div>
@@ -762,7 +822,7 @@ svg.ic { display: block; }
                 <div class="showcase-bookname" id="showcaseBookname"></div>
                 <div class="stat-cards">
                     <div class="stat-card"><div class="sc-label">总词组</div><div class="sc-value" id="showcaseTotal">0</div></div>
-                    <div class="stat-card"><div class="sc-label">已学习</div><div class="sc-value green" id="showcaseLearned">0</div></div>
+                    <div class="stat-card"><div class="sc-label">背诵时间</div><div class="sc-value" id="showcaseTime">0 分钟</div></div>
                 </div>
             </div>
 
@@ -771,6 +831,7 @@ svg.ic { display: block; }
                 <div class="time-row">
                     <div class="time-cell"><div class="tc-num" id="todayTime">0 分钟</div><div class="tc-label">今日</div></div>
                     <div class="time-cell"><div class="tc-num" id="monthTime">0 分钟</div><div class="tc-label">本月</div></div>
+                    <div class="time-cell"><div class="tc-num" id="totalTime">0 分钟</div><div class="tc-label">累计</div></div>
                     <div class="time-cell"><div class="tc-num" id="monthDays">0 天</div><div class="tc-label">打卡</div></div>
                     <div class="time-cell"><div class="tc-num" id="streakDays">0 天</div><div class="tc-label">连续</div></div>
                 </div>
@@ -830,6 +891,42 @@ above all 首先，尤其是"></textarea>
             <button class="btn" onclick="saveBook()">保存</button>
             <button class="btn ghost" onclick="closeSheet('bookSheetMask')">取消</button>
             <button class="btn danger" id="bookDeleteBtn" style="display:none" onclick="deleteBook()">删除书本</button>
+        </div>
+    </div>
+</div>
+
+<!-- 词组管理 -->
+<div class="sheet-mask" id="phraseMask" onclick="if(event.target===this) closeSheet('phraseMask')">
+    <div class="sheet phrase-sheet">
+        <div class="phrase-head">
+            <div class="s-title" id="phraseBookName">词组</div>
+            <button class="phrase-close" onclick="closeSheet('phraseMask')">✕</button>
+        </div>
+        <div class="phrase-toolbar">
+            <button class="btn" onclick="openPhraseEdit()">＋ 添加</button>
+            <button class="btn ghost" id="phraseMultiBtn" onclick="togglePhraseMulti()">多选</button>
+            <span class="phrase-count" id="phraseCount">0 个</span>
+        </div>
+        <div class="phrase-multibar" id="phraseMultiBar" style="display:none">
+            <span class="mc" id="phraseMultiCount">已选 0 个</span>
+            <button class="btn-primary" style="padding:8px 18px;font-size:13px;border-radius:12px" onclick="deleteSelectedPhrases()">删除选中</button>
+        </div>
+        <div class="phrase-list" id="phraseList"></div>
+    </div>
+</div>
+
+<!-- 词组编辑 -->
+<div class="sheet-mask" id="phraseEditMask" onclick="if(event.target===this) closeSheet('phraseEditMask')">
+    <div class="sheet">
+        <div class="s-title" id="phraseEditTitle">添加词组</div>
+        <div class="s-label">英文词组</div>
+        <input class="field" id="phraseEngInput" placeholder="例如：above all">
+        <div class="s-label">中文释义</div>
+        <input class="field" id="phraseChnInput" placeholder="例如：首先，尤其是">
+        <div class="s-btns">
+            <button class="btn" onclick="savePhrase()">保存</button>
+            <button class="btn danger" id="phraseEditDeleteBtn" style="display:none" onclick="deletePhrase()">删除</button>
+            <button class="btn ghost" onclick="closeSheet('phraseEditMask')">取消</button>
         </div>
     </div>
 </div>
@@ -951,6 +1048,7 @@ const BOOK_KEY = "phrase_books_v1";
 const TIME_KEY = "phrase_app_time_v1";
 const OLD_KEY = "phrase_app_v1";
 const MODE_TIME_KEY = "phrase_mode_time_v1";
+const BOOK_TIME_KEY = "phrase_book_time_v1";
 const SETTINGS_KEY = "phrase_settings_v1";
 const INTERVALS = [1, 2, 4, 7, 15, 30];   // 熟练度 1~6 对应的复习间隔（天）
 
@@ -975,8 +1073,16 @@ let sessionMode = null;   // null | 'new' | 'review' | 'randomBook' | 'randomAll
 let editingBookId = null;
 let importTargetId = null;
 let selectedCover = 0;
+let bookSortDesc = true;
+let bookMultiSelect = false;
+let bookSelected = new Set();
+let phraseBookId = null;
+let phraseMultiSelect = false;
+let phraseSelected = new Set();
+let editingPhraseKey = null;
 let timeLog = {};
 let modeLog = {};
+let bookTimeLog = {};
 let pendingSeconds = 0;
 let timer = null;
 let seconds = 0;
@@ -992,6 +1098,7 @@ function saveBooks() { localStorage.setItem(BOOK_KEY, JSON.stringify(books)); }
 function loadData() {
     loadTimeLog();
     loadModeLog();
+    loadBookTimeLog();
     loadSettings();
     let raw = localStorage.getItem(BOOK_KEY);
     if (raw) {
@@ -1010,6 +1117,7 @@ function loadData() {
         }
     }
     migratePhrases();
+    migrateBooks();
     if (!books.find(b => b.id === currentBookId)) {
         currentBookId = books.length ? books[0].id : null;
     }
@@ -1021,6 +1129,11 @@ function migratePhrases() {
         if (!p.nextReview && p.status !== 0) p.nextReview = today;
         if (p.fav === undefined) p.fav = false;
     }));
+}
+function migrateBooks() {
+    let changed = false;
+    books.forEach(b => { if (!b.createdAt) { b.createdAt = Date.now(); changed = true; } });
+    if (changed) saveBooks();
 }
 
 // —— 页面切换 ——
@@ -1046,19 +1159,23 @@ function renderBooks() {
         return;
     }
     empty.style.display = 'none';
-    grid.innerHTML = books.map(b => {
+    const sorted = [...books].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    if (bookSortDesc) sorted.reverse();
+    grid.innerHTML = sorted.map(b => {
         const c = COVERS[b.cover % COVERS.length];
         const total = b.phrases.length;
         const know = b.phrases.filter(p => p.status === 1).length;
         const unknow = b.phrases.filter(p => p.status === -1).length;
-        return `<div class="book-cover" style="background:${c.bg}" onclick="openBook('${b.id}')">
-            <button class="book-more" onclick="event.stopPropagation(); editBook('${b.id}')">⋯</button>
+        const sel = bookSelected.has(b.id);
+        return `<div class="book-cover${sel ? ' book-sel' : ''}" style="background:${c.bg}" onclick="${bookMultiSelect ? `toggleBookSelect('${b.id}')` : `openBook('${b.id}')`}">
+            ${bookMultiSelect ? `<span class="book-check">${sel ? '✓' : ''}</span>` : `<button class="book-more" onclick="event.stopPropagation(); editBook('${b.id}')">⋯</button>`}
             <div class="book-name">${escapeHtml(b.name)}</div>
             <div class="book-emblem"><svg class="ic" viewBox="0 0 48 48"><ellipse cx="24" cy="43.5" rx="17" ry="4.5" fill="#179596" opacity="0.30"/><rect x="3" y="3" width="42" height="42" rx="13" fill="url(#ic-study)"/><rect x="7" y="5" width="34" height="9" rx="4.5" fill="#fff" opacity="0.32"/><g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></g></svg></div>
             <div class="book-meta">${total} 词 · 掌握 ${know} · 生词 ${unknow}</div>
-            <button class="book-import" onclick="event.stopPropagation(); importToBook('${b.id}')">＋ 导入词组</button>
+            <div class="book-time">录入 ${fmtDate(b.createdAt)}</div>
+            ${bookMultiSelect ? '' : `<div class="book-actions"><button class="book-import" onclick="event.stopPropagation(); openPhraseList('${b.id}')">词组</button><button class="book-import" onclick="event.stopPropagation(); importToBook('${b.id}')">＋ 导入</button></div>`}
         </div>`;
-    }).join('') + `<div class="book-add" onclick="createBook()"><span class="plus">＋</span>新建书本</div>`;
+    }).join('') + (bookMultiSelect ? '' : `<div class="book-add" onclick="createBook()"><span class="plus">＋</span>新建书本</div>`);
 }
 
 function createBook() {
@@ -1094,7 +1211,7 @@ function saveBook() {
         const b = books.find(x => x.id === editingBookId);
         if (b) { b.name = name; b.cover = selectedCover; }
     } else {
-        const nb = { id: genId(), name: name, cover: selectedCover, phrases: [] };
+        const nb = { id: genId(), name: name, cover: selectedCover, phrases: [], createdAt: Date.now() };
         books.push(nb);
         currentBookId = nb.id;
     }
@@ -1117,6 +1234,162 @@ function deleteBook() {
     renderBooks();
     renderDashboard();
     switchTab('pageBooks');
+    toast('已删除');
+}
+function fmtDate(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function toggleBookSort() {
+    bookSortDesc = !bookSortDesc;
+    document.getElementById('bookSortBtn').textContent = bookSortDesc ? '最新在前' : '最旧在前';
+    renderBooks();
+}
+function toggleBookMulti() {
+    bookMultiSelect = !bookMultiSelect;
+    bookSelected.clear();
+    document.getElementById('bookMultiBtn').textContent = bookMultiSelect ? '完成' : '多选';
+    document.getElementById('bookMultiBar').style.display = bookMultiSelect ? 'flex' : 'none';
+    updateBookMultiCount();
+    renderBooks();
+}
+function toggleBookSelect(id) {
+    if (bookSelected.has(id)) bookSelected.delete(id);
+    else bookSelected.add(id);
+    updateBookMultiCount();
+    renderBooks();
+}
+function updateBookMultiCount() {
+    document.getElementById('bookMultiCount').textContent = '已选 ' + bookSelected.size + ' 本';
+}
+function deleteSelectedBooks() {
+    if (bookSelected.size === 0) { toast('请先选择要删除的书'); return; }
+    if (!confirm(`确定删除选中的 ${bookSelected.size} 本书吗？里面的词组会一起删除。`)) return;
+    bookSelected.forEach(id => { delete bookTimeLog[id]; });
+    books = books.filter(b => !bookSelected.has(b.id));
+    if (currentBookId && !books.find(b => b.id === currentBookId)) currentBookId = books.length ? books[0].id : null;
+    saveBooks();
+    saveBookTimeLog();
+    bookSelected.clear();
+    bookMultiSelect = false;
+    document.getElementById('bookMultiBtn').textContent = '多选';
+    document.getElementById('bookMultiBar').style.display = 'none';
+    renderBooks();
+    renderDashboard();
+    switchTab('pageBooks');
+    toast('已删除');
+}
+function openPhraseList(id) {
+    const b = books.find(x => x.id === id);
+    if (!b) return;
+    phraseBookId = id;
+    phraseMultiSelect = false;
+    phraseSelected.clear();
+    editingPhraseKey = null;
+    document.getElementById('phraseMultiBtn').textContent = '多选';
+    document.getElementById('phraseMultiBar').style.display = 'none';
+    renderPhraseList();
+    openSheet('phraseMask');
+}
+function renderPhraseList() {
+    const b = books.find(x => x.id === phraseBookId);
+    if (!b) return;
+    document.getElementById('phraseBookName').textContent = b.name;
+    document.getElementById('phraseCount').textContent = b.phrases.length + ' 个';
+    const list = document.getElementById('phraseList');
+    if (!b.phrases.length) {
+        list.innerHTML = `<div class="phrase-empty">这本书还没有词组<br>点「＋ 添加」单个录入，或回到书库点「＋ 导入」批量粘贴</div>`;
+        return;
+    }
+    list.innerHTML = b.phrases.map(p => {
+        const sel = phraseSelected.has(p.eng);
+        const click = phraseMultiSelect ? `togglePhraseSelect('${escapeAttr(p.eng)}')` : `openPhraseEdit('${escapeAttr(p.eng)}')`;
+        return `<div class="phrase-item" onclick="${click}">
+            ${phraseMultiSelect ? `<span class="fav-check" style="background:${sel ? 'var(--accent)' : 'transparent'};color:#fff">${sel ? '✓' : ''}</span>` : ''}
+            <div style="flex:1;min-width:0">
+                <div class="p-eng">${escapeHtml(p.eng)}</div>
+                <div class="p-chn">${escapeHtml(p.chn)}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+function togglePhraseMulti() {
+    phraseMultiSelect = !phraseMultiSelect;
+    phraseSelected.clear();
+    document.getElementById('phraseMultiBtn').textContent = phraseMultiSelect ? '完成' : '多选';
+    document.getElementById('phraseMultiBar').style.display = phraseMultiSelect ? 'flex' : 'none';
+    updatePhraseMultiCount();
+    renderPhraseList();
+}
+function togglePhraseSelect(eng) {
+    if (phraseSelected.has(eng)) phraseSelected.delete(eng);
+    else phraseSelected.add(eng);
+    updatePhraseMultiCount();
+    renderPhraseList();
+}
+function updatePhraseMultiCount() {
+    document.getElementById('phraseMultiCount').textContent = '已选 ' + phraseSelected.size + ' 个';
+}
+function deleteSelectedPhrases() {
+    const b = books.find(x => x.id === phraseBookId);
+    if (!b) return;
+    if (phraseSelected.size === 0) { toast('请先选择词组'); return; }
+    if (!confirm(`确定删除选中的 ${phraseSelected.size} 个词组吗？`)) return;
+    b.phrases = b.phrases.filter(p => !phraseSelected.has(p.eng));
+    saveBooks();
+    phraseSelected.clear();
+    phraseMultiSelect = false;
+    document.getElementById('phraseMultiBtn').textContent = '多选';
+    document.getElementById('phraseMultiBar').style.display = 'none';
+    renderPhraseList();
+    renderBooks();
+    renderDashboard();
+    toast('已删除');
+}
+function openPhraseEdit(eng) {
+    const b = books.find(x => x.id === phraseBookId);
+    if (!b) return;
+    const p = eng ? b.phrases.find(x => x.eng === eng) : null;
+    editingPhraseKey = eng || null;
+    document.getElementById('phraseEditTitle').textContent = p ? '编辑词组' : '添加词组';
+    document.getElementById('phraseEngInput').value = p ? p.eng : '';
+    document.getElementById('phraseChnInput').value = p ? p.chn : '';
+    document.getElementById('phraseEditDeleteBtn').style.display = p ? 'flex' : 'none';
+    openSheet('phraseEditMask');
+}
+function savePhrase() {
+    const b = books.find(x => x.id === phraseBookId);
+    if (!b) return;
+    const eng = document.getElementById('phraseEngInput').value.trim();
+    const chn = document.getElementById('phraseChnInput').value.trim();
+    if (!eng || !chn) { toast('英文和中文都要填'); return; }
+    if (editingPhraseKey) {
+        if (eng !== editingPhraseKey && b.phrases.some(x => x.eng === eng)) { toast('这个词组已存在'); return; }
+        const p = b.phrases.find(x => x.eng === editingPhraseKey);
+        if (p) { p.eng = eng; p.chn = chn; }
+    } else {
+        if (b.phrases.some(x => x.eng === eng)) { toast('这个词组已存在'); return; }
+        b.phrases.push({ eng: eng, chn: chn, status: 0, level: 0, nextReview: '', fav: false });
+    }
+    saveBooks();
+    closeSheet('phraseEditMask');
+    renderPhraseList();
+    renderBooks();
+    renderDashboard();
+    toast('已保存');
+}
+function deletePhrase() {
+    const b = books.find(x => x.id === phraseBookId);
+    if (!b) return;
+    if (!editingPhraseKey) return;
+    if (!confirm('删除这个词组吗？')) return;
+    b.phrases = b.phrases.filter(p => p.eng !== editingPhraseKey);
+    saveBooks();
+    closeSheet('phraseEditMask');
+    renderPhraseList();
+    renderBooks();
+    renderDashboard();
     toast('已删除');
 }
 function openBook(id) {
@@ -1478,7 +1751,7 @@ function renderShowcase() {
         track.innerHTML = '';
         document.getElementById('showcaseBookname').textContent = '';
         document.getElementById('showcaseTotal').textContent = '0';
-        document.getElementById('showcaseLearned').textContent = '0';
+        document.getElementById('showcaseTime').textContent = '0 分钟';
         return;
     }
     if (showcaseIndex >= books.length) showcaseIndex = Math.max(0, books.length - 1);
@@ -1538,10 +1811,9 @@ function updateShowcaseData() {
     const b = books[showcaseIndex];
     if (!b) return;
     const total = b.phrases.length;
-    const learned = b.phrases.filter(p => p.status !== 0).length;
     document.getElementById('showcaseBookname').textContent = b.name;
     document.getElementById('showcaseTotal').textContent = total;
-    document.getElementById('showcaseLearned').textContent = learned;
+    document.getElementById('showcaseTime').textContent = fmtDuration(bookTimeLog[b.id] || 0);
 }
 function updateStats() {
     document.getElementById("progressText").textContent = `${currentIndex + 1} / ${currentList.length}`;
@@ -1737,6 +2009,8 @@ function loadTimeLog() { try { timeLog = JSON.parse(localStorage.getItem(TIME_KE
 function saveTimeLog() { localStorage.setItem(TIME_KEY, JSON.stringify(timeLog)); }
 function loadModeLog() { try { modeLog = JSON.parse(localStorage.getItem(MODE_TIME_KEY)) || {}; } catch (e) { modeLog = {}; } }
 function saveModeLog() { localStorage.setItem(MODE_TIME_KEY, JSON.stringify(modeLog)); }
+function loadBookTimeLog() { try { bookTimeLog = JSON.parse(localStorage.getItem(BOOK_TIME_KEY)) || {}; } catch (e) { bookTimeLog = {}; } }
+function saveBookTimeLog() { localStorage.setItem(BOOK_TIME_KEY, JSON.stringify(bookTimeLog)); }
 function loadSettings() { try { settings = Object.assign({ autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch (e) { settings = { autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }; } }
 function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
 function flushTime() {
@@ -1747,8 +2021,11 @@ function flushTime() {
         if (!modeLog[k]) modeLog[k] = {};
         modeLog[k][sessionMode] = (modeLog[k][sessionMode] || 0) + pendingSeconds;
     }
+    if (currentBookId) {
+        bookTimeLog[currentBookId] = (bookTimeLog[currentBookId] || 0) + pendingSeconds;
+    }
     pendingSeconds = 0;
-    saveTimeLog(); saveModeLog(); updateTimeStats(); renderWeekBars();
+    saveTimeLog(); saveModeLog(); saveBookTimeLog(); updateTimeStats(); renderWeekBars();
 }
 function fmtDuration(sec) {
     sec = Math.floor(sec || 0);
@@ -1760,13 +2037,16 @@ function fmtDuration(sec) {
 function updateTimeStats() {
     const today = todayKey();
     const monthPrefix = today.slice(0, 7);
-    let monthSec = 0, monthDays = 0;
+    let monthSec = 0, monthDays = 0, totalSec = 0;
     for (const k in timeLog) {
-        if (k.indexOf(monthPrefix) === 0) { monthSec += timeLog[k]; if (timeLog[k] > 0) monthDays++; }
+        const v = timeLog[k];
+        totalSec += v;
+        if (k.indexOf(monthPrefix) === 0) { monthSec += v; if (v > 0) monthDays++; }
     }
     const todaySec = (timeLog[today] || 0) + pendingSeconds;
     document.getElementById("todayTime").textContent = fmtDuration(todaySec);
     document.getElementById("monthTime").textContent = fmtDuration(monthSec);
+    document.getElementById("totalTime").textContent = fmtDuration(totalSec + pendingSeconds);
     document.getElementById("monthDays").textContent = monthDays + " 天";
     document.getElementById("streakDays").textContent = calcStreak() + " 天";
 }
@@ -1811,7 +2091,7 @@ function renderWeekBars() {
 function exportBackup() {
     if (!books.length) { toast("暂无数据可导出"); return; }
     flushTime();
-    const dataStr = JSON.stringify({ books: books, timeLog: timeLog, modeLog: modeLog, settings: settings }, null, 2);
+    const dataStr = JSON.stringify({ books: books, timeLog: timeLog, modeLog: modeLog, bookTimeLog: bookTimeLog, settings: settings }, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1822,7 +2102,7 @@ function exportBackup() {
 async function shareBackup() {
     if (!books.length) { toast("暂无数据可分享"); return; }
     flushTime();
-    const dataStr = JSON.stringify({ books: books, timeLog: timeLog, modeLog: modeLog, settings: settings }, null, 2);
+    const dataStr = JSON.stringify({ books: books, timeLog: timeLog, modeLog: modeLog, bookTimeLog: bookTimeLog, settings: settings }, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const file = new File([blob], "词组记忆备份.json", { type: "application/json" });
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1845,22 +2125,26 @@ function importBackup(e) {
             const raw = JSON.parse(evt.target.result);
             if (Array.isArray(raw)) {
                 books = [{ id: genId(), name: "导入的词组", cover: 0, phrases: raw }];
+                bookTimeLog = {};
             } else if (raw.books) {
                 books = raw.books;
                 timeLog = raw.timeLog || {};
                 modeLog = raw.modeLog || {};
+                bookTimeLog = raw.bookTimeLog || {};
                 if (raw.settings) settings = Object.assign({ autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
-                saveTimeLog(); saveModeLog(); saveSettings();
+                saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveSettings();
             } else if (raw.phrases) {
                 books = [{ id: genId(), name: "导入的词组", cover: 0, phrases: raw.phrases }];
                 timeLog = raw.timeLog || {};
                 modeLog = raw.modeLog || {};
+                bookTimeLog = raw.bookTimeLog || {};
                 if (raw.settings) settings = Object.assign({ autoSpeak: false, shuffle: false, learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
-                saveTimeLog(); saveModeLog(); saveSettings();
+                saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveSettings();
             } else {
                 throw new Error('bad');
             }
             migratePhrases();
+            migrateBooks();
             if (books.length) currentBookId = books[0].id;
             saveBooks();
             renderBooks();
