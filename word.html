@@ -1260,6 +1260,7 @@ function loadData() {
     }
     migratePhrases();
     migrateBooks();
+    migrateForgotReset();
     if (!books.find(b => b.id === currentBookId)) {
         currentBookId = books.length ? books[0].id : null;
     }
@@ -1279,6 +1280,23 @@ function migrateBooks() {
     let changed = false;
     books.forEach(b => { if (!b.createdAt) { b.createdAt = Date.now(); changed = true; } });
     if (changed) saveBooks();
+}
+// 一次性修复：旧版「忘记」会把学过的词误重置成 status=0 / nextReview=null（掉进学习新词）。
+// 这些词其实是学过的，恢复成已学状态、明天复习。null 只由旧版产生，新版不会写 null，故幂等。
+function migrateForgotReset() {
+    const tomorrow = addDays(todayKey(), 1);
+    let restored = 0;
+    books.forEach(b => b.phrases.forEach(p => {
+        if (p.status === 0 && p.nextReview === null) {
+            p.status = 1;
+            p.level = 1;
+            p.ease = 2.5;
+            p.interval = 1;
+            p.nextReview = tomorrow;
+            restored++;
+        }
+    }));
+    if (restored > 0) { saveBooks(); toast('已恢复 ' + restored + ' 个被误重置的词'); }
 }
 
 // —— 页面切换 ——
