@@ -1171,7 +1171,7 @@ const MODE_TIME_KEY = "phrase_mode_time_v1";
 const BOOK_TIME_KEY = "phrase_book_time_v1";
 const SETTINGS_KEY = "phrase_settings_v1";
 const LEARN_TASK_KEY = "phrase_learn_task_v1";
-const WORD_LOG_KEY = "phrase_word_log_v1";
+const MODE_COUNT_KEY = "phrase_mode_count_v1";
 const INTERVALS = [1, 2, 4, 7, 15, 30];   // 熟练度 1~6 对应的复习间隔（天）
 const NEW_STREAK_TARGET = 3;              // 学习新词：连续答对 3 次才算学完
 // 版本更新时间：自动取文件最后修改时间（上传新版后自动变，无需手动改）
@@ -1225,7 +1225,7 @@ let calMonth = null;
 let timeLog = {};
 let modeLog = {};
 let bookTimeLog = {};
-let wordLog = {};   // 按日期记录「学习新词」学完的词数，用于今日学词统计
+let modeCountLog = {};   // 按日期+模式记录学完/复习完的词数，用于今日小结与学词统计
 let pendingSeconds = 0;
 let timer = null;
 let seconds = 0;
@@ -1244,7 +1244,7 @@ function loadData() {
     loadBookTimeLog();
     loadSettings();
     loadLearnTask();
-    loadWordLog();
+    loadModeCountLog();
     let raw = localStorage.getItem(BOOK_KEY);
     if (raw) {
         try { books = JSON.parse(raw); } catch (e) { books = []; }
@@ -1697,7 +1697,11 @@ function showSessionSummary() {
     let total = 0, rows = '';
     for (const m of ['new', 'review', 'randomBook', 'randomAll']) {
         const sec = today[m] || 0;
-        if (sec > 0) { total += sec; rows += `<div class="sum-row"><span class="sum-label">${MODE_LABELS[m]}</span><span class="sum-val">${fmtDuration(sec)}</span></div>`; }
+        if (sec > 0) {
+            total += sec;
+            const cnt = modeCount(m);
+            rows += `<div class="sum-row"><span class="sum-label">${MODE_LABELS[m]}</span><span class="sum-val">${fmtDuration(sec)} · ${cnt} 词</span></div>`;
+        }
     }
     if (total <= 0) return;
     const tomorrow = addDays(k, 1);
@@ -1916,7 +1920,8 @@ function applyReviewAnswer(item, q) {
         item.interval = 1;
         item.need = 1; item.rc = 0;
         item.nextReview = addDays(todayKey(), 1);
-        lastAction = { item: item, prev: prev, kind: 'remove', learned: learnedInSession };
+        lastAction = { item: item, prev: prev, kind: 'remove', learned: learnedInSession, mc: modeCount(sessionMode), mcMode: sessionMode };
+        bumpModeCount(sessionMode);                 // 复习完一个词
         currentList.shift();                        // 明天再见 → 移出本组
         saveBooks();
         if (currentList.length === 0) { setRoundDoneHint(); openSheet('roundDoneMask'); }
@@ -1934,9 +1939,10 @@ function applyReviewAnswer(item, q) {
         pass = rc >= need;
     }
     item.need = need; item.rc = rc;
-    lastAction = { item: item, prev: prev, kind: pass ? 'remove' : 'requeue', learned: learnedInSession };
+    lastAction = { item: item, prev: prev, kind: pass ? 'remove' : 'requeue', learned: learnedInSession, mc: modeCount(sessionMode), mcMode: sessionMode };
     if (pass) {
         scheduleReview(item, need);
+        bumpModeCount(sessionMode);                 // 复习过关一个词
         currentList.shift();                        // 过关 → 移出队列
     } else {
         currentList.push(currentList.shift());      // 未过关 → 插回队尾稍后再见
@@ -1949,7 +1955,7 @@ function applyReviewAnswer(item, q) {
 
 // —— 学习新词（不背单词式）：连续答对 3 次才学完，答错清零；学完移出队列，否则回队尾 ——
 function applyNewAnswer(item, correct) {
-    lastAction = { item: item, prev: snapPhrase(item), kind: (correct && ((item.streak || 0) + 1 >= NEW_STREAK_TARGET)) ? 'remove' : 'requeue', learned: learnedInSession, done: learnDone, wlog: wordLog[todayKey()] || 0 };
+    lastAction = { item: item, prev: snapPhrase(item), kind: (correct && ((item.streak || 0) + 1 >= NEW_STREAK_TARGET)) ? 'remove' : 'requeue', learned: learnedInSession, done: learnDone, mc: modeCount('new'), mcMode: 'new' };
     if (correct) {
         item.streak = (item.streak || 0) + 1;
         if (item.streak >= NEW_STREAK_TARGET) {
@@ -1960,7 +1966,7 @@ function applyNewAnswer(item, correct) {
             item.nextReview = addDays(todayKey(), 1);
             learnedInSession++;
             learnDone++; saveLearnTask();           // 计入学习任务进度
-            wordLog[todayKey()] = (wordLog[todayKey()] || 0) + 1; saveWordLog();  // 今日学词数 +1
+            bumpModeCount('new');                                                   // 今日学词数 +1
             currentList.shift();                    // 学完，移出队列
         } else {
             item.status = 0;
@@ -1998,7 +2004,7 @@ function undoLast() {
     }
     learnedInSession = a.learned;
     if (a.done !== undefined) { learnDone = a.done; saveLearnTask(); }
-    if (a.wlog !== undefined) { wordLog[todayKey()] = a.wlog; saveWordLog(); }
+    if (a.mc !== undefined) { const k = todayKey(); if (!modeCountLog[k]) modeCountLog[k] = {}; modeCountLog[k][a.mcMode] = a.mc; saveModeCountLog(); }
     saveBooks();
     closeSheet('roundDoneMask');
     currentIndex = 0;
@@ -2012,7 +2018,7 @@ function setRoundDoneHint() {
     const stat = document.getElementById('roundDoneStat');
     if (sessionMode === 'new') {
         const left = books.flatMap(b => b.phrases).filter(p => p.status === 0).length;
-        if (stat) stat.textContent = `今天已学 ${wordLog[todayKey()] || 0} 个新词`;
+        if (stat) stat.textContent = `今天已学 ${modeCount('new')} 个新词`;
         hint.textContent = left > 0 ? `还剩 ${left} 个新词待学` : '所有新词都学完啦！';
         return;
     }
@@ -2389,8 +2395,10 @@ function loadSettings() { try { settings = Object.assign({ autoSpeak: true, shuf
 function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
 function loadLearnTask() { try { learnDone = parseInt(localStorage.getItem(LEARN_TASK_KEY), 10) || 0; } catch (e) { learnDone = 0; } }
 function saveLearnTask() { localStorage.setItem(LEARN_TASK_KEY, String(learnDone)); }
-function loadWordLog() { try { wordLog = JSON.parse(localStorage.getItem(WORD_LOG_KEY)) || {}; } catch (e) { wordLog = {}; } }
-function saveWordLog() { localStorage.setItem(WORD_LOG_KEY, JSON.stringify(wordLog)); }
+function loadModeCountLog() { try { modeCountLog = JSON.parse(localStorage.getItem(MODE_COUNT_KEY)) || {}; } catch (e) { modeCountLog = {}; } }
+function saveModeCountLog() { localStorage.setItem(MODE_COUNT_KEY, JSON.stringify(modeCountLog)); }
+function modeCount(mode) { const k = todayKey(); return (modeCountLog[k] && modeCountLog[k][mode]) || 0; }
+function bumpModeCount(mode) { const k = todayKey(); if (!modeCountLog[k]) modeCountLog[k] = {}; modeCountLog[k][mode] = (modeCountLog[k][mode] || 0) + 1; saveModeCountLog(); }
 function flushTime() {
     if (pendingSeconds <= 0) return;
     const k = todayKey();
@@ -2497,7 +2505,7 @@ function openCalendar() { renderMonthCalendar(); renderWeekBars(); openSheet('ca
 function exportBackup() {
     if (!books.length) { toast("暂无数据可导出"); return; }
     flushTime();
-    const dataStr = JSON.stringify({ books: books, timeLog: timeLog, modeLog: modeLog, bookTimeLog: bookTimeLog, wordLog: wordLog, settings: settings }, null, 2);
+    const dataStr = JSON.stringify({ books: books, timeLog: timeLog, modeLog: modeLog, bookTimeLog: bookTimeLog, modeCountLog: modeCountLog, settings: settings }, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -2508,7 +2516,7 @@ function exportBackup() {
 async function shareBackup() {
     if (!books.length) { toast("暂无数据可分享"); return; }
     flushTime();
-    const dataStr = JSON.stringify({ books: books, timeLog: timeLog, modeLog: modeLog, bookTimeLog: bookTimeLog, wordLog: wordLog, settings: settings }, null, 2);
+    const dataStr = JSON.stringify({ books: books, timeLog: timeLog, modeLog: modeLog, bookTimeLog: bookTimeLog, modeCountLog: modeCountLog, settings: settings }, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const file = new File([blob], "词组记忆备份.json", { type: "application/json" });
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -2537,17 +2545,17 @@ function importBackup(e) {
                 timeLog = raw.timeLog || {};
                 modeLog = raw.modeLog || {};
                 bookTimeLog = raw.bookTimeLog || {};
-                wordLog = raw.wordLog || {};
+                modeCountLog = raw.modeCountLog || {};
                 if (raw.settings) settings = Object.assign({ autoSpeak: true, shuffle: false, voice: '', learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
-                saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveWordLog(); saveSettings();
+                saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveModeCountLog(); saveSettings();
             } else if (raw.phrases) {
                 books = [{ id: genId(), name: "导入的词组", cover: 0, phrases: raw.phrases }];
                 timeLog = raw.timeLog || {};
                 modeLog = raw.modeLog || {};
                 bookTimeLog = raw.bookTimeLog || {};
-                wordLog = raw.wordLog || {};
+                modeCountLog = raw.modeCountLog || {};
                 if (raw.settings) settings = Object.assign({ autoSpeak: true, shuffle: false, voice: '', learnCount: 10, reviewCount: 10, randomBookCount: 10, randomAllCount: 10 }, raw.settings);
-                saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveWordLog(); saveSettings();
+                saveTimeLog(); saveModeLog(); saveBookTimeLog(); saveModeCountLog(); saveSettings();
             } else {
                 throw new Error('bad');
             }
