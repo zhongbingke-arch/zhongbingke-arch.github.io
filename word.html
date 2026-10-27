@@ -854,7 +854,7 @@ svg.ic { display: block; }
                 <button class="act-btn know" id="btnRight" onclick="chooseKnow()">认识</button>
             </div>
             <div class="study-actions grade-actions" id="gradeActions" style="display:none">
-                <button class="act-btn forget" onclick="grade(0)">忘记</button>
+                <button class="act-btn forget" onclick="gradeForget()">忘记</button>
                 <button class="act-btn hard" onclick="grade(1)">模糊</button>
                 <button class="act-btn good" onclick="grade(2)">认识</button>
             </div>
@@ -1827,7 +1827,7 @@ function updateFavBtn() {
 function setPhase(p) {
     phase = p;
     const isNew = (sessionMode === 'new');
-    document.getElementById("bigCard").classList.toggle("revealed", p === "confirm" || p === "grade");
+    document.getElementById("bigCard").classList.toggle("revealed", p === "confirm" || p === "grade" || p === "forget");
     const two = document.getElementById("twoActions");
     const gradeBox = document.getElementById("gradeActions");
     const left = document.getElementById("btnLeft");
@@ -1871,6 +1871,13 @@ function setPhase(p) {
             right.onclick = confirmNext;
             hint.textContent = pending === 'wrong' ? '已认错，看完释义点「下一个」' : '你选了「不认识」，看完释义点「下一个」';
         }
+    } else if (p === 'forget') {   // 忘记后停留：只留「下一个」，看完释义再跳过
+        left.style.display = 'none';
+        two.style.gridTemplateColumns = '1fr';
+        right.textContent = '下一个';
+        right.className = 'act-btn know';
+        right.onclick = forgetNext;
+        hint.textContent = '已忘记，看完释义点「下一个」';
     } else { // grade：复习打分（认识/模糊/忘记，弱词反复直到连续答对过关）
         two.style.display = 'none';
         gradeBox.style.display = 'grid';
@@ -1886,6 +1893,16 @@ function revealAnswer() { setPhase('grade'); }
 function grade(q) {
     const item = currentList[currentIndex]; if (!item) return;
     applyReviewAnswer(item, q);
+}
+// 复习旧词的「忘记/下一个」：点忘记先停留看释义，点下一个才跳过（像学新词的「不认识/下一个」）
+function gradeForget() {
+    pending = 'forget';
+    setPhase('forget');
+    updateStats();
+}
+function forgetNext() {
+    const item = currentList[currentIndex]; if (!item) return;
+    applyReviewAnswer(item, 0);
 }
 // 学习新词的「认错/下一个」（仅新词模式调用）
 function confirmWrong() {
