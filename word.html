@@ -622,6 +622,16 @@ svg.ic { display: block; }
     transition: transform 0.15s;
 }
 .fav-btn:active { transform: scale(0.9); }
+.edit-btn {
+    position: absolute; top: 12px; right: 108px; z-index: 8;
+    width: 40px; height: 40px;
+    border: none; background: none; padding: 0;
+    font-size: 22px; line-height: 1; cursor: pointer;
+    color: var(--text-2);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s;
+}
+.edit-btn:active { transform: scale(0.9); }
 
 /* 收藏本 */
 .fav-multibtn {
@@ -840,6 +850,7 @@ svg.ic { display: block; }
                 <div class="big-card" id="bigCard">
                     <button class="undo-btn" id="undoBtn" onclick="undoLast()" style="display:none">↩</button>
                     <button class="fav-btn" id="favBtn" onclick="event.stopPropagation(); toggleFav()">☆</button>
+                    <button class="edit-btn" id="editBtn" onclick="event.stopPropagation(); openStudyEdit()" title="修改">✎</button>
                     <button class="speak-btn" id="speakBtn" onclick="event.stopPropagation(); speakCurrent()"><svg class="ic" viewBox="0 0 48 48"><ellipse cx="24" cy="43.5" rx="17" ry="4.5" fill="#d94a4a" opacity="0.30"/><rect x="3" y="3" width="42" height="42" rx="13" fill="url(#ic-volume)"/><rect x="7" y="5" width="34" height="9" rx="4.5" fill="#fff" opacity="0.32"/><g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></g></svg></button>
                     <div class="big-word" id="cardFront">点击开始</div>
                     <div class="big-hint">先回想含义，再在下方选择</div>
@@ -1220,6 +1231,7 @@ let phraseBookId = null;
 let phraseMultiSelect = false;
 let phraseSelected = new Set();
 let editingPhraseKey = null;
+let studyEditActive = false;   // 背诵中直接改当前词（复用词组编辑弹窗）
 let calYear = null;
 let calMonth = null;
 let timeLog = {};
@@ -1515,6 +1527,7 @@ function deleteSelectedPhrases() {
     toast('已删除');
 }
 function openPhraseEdit(eng) {
+    studyEditActive = false;
     const b = books.find(x => x.id === phraseBookId);
     if (!b) return;
     const p = eng ? b.phrases.find(x => x.eng === eng) : null;
@@ -1526,6 +1539,24 @@ function openPhraseEdit(eng) {
     openSheet('phraseEditMask');
 }
 function savePhrase() {
+    // 背诵中直接改当前词（不改学习进度，只改英文/释义）
+    if (studyEditActive) {
+        const item = currentList[currentIndex];
+        if (!item) return;
+        const eng = document.getElementById('phraseEngInput').value.trim();
+        const chn = document.getElementById('phraseChnInput').value.trim();
+        if (!eng || !chn) { toast('英文和中文都要填'); return; }
+        const b = currentBook();
+        if (b && eng !== item.eng && b.phrases.some(x => x !== item && x.eng === eng)) { toast('这个词组已存在'); return; }
+        item.eng = eng;
+        item.chn = chn;
+        saveBooks();
+        studyEditActive = false;
+        closeSheet('phraseEditMask');
+        refreshCardText();
+        toast('已修改');
+        return;
+    }
     const b = books.find(x => x.id === phraseBookId);
     if (!b) return;
     const eng = document.getElementById('phraseEngInput').value.trim();
@@ -1558,6 +1589,16 @@ function deletePhrase() {
     renderBooks();
     renderDashboard();
     toast('已删除');
+}
+function openStudyEdit() {
+    const item = currentList[currentIndex];
+    if (!item) return;
+    studyEditActive = true;
+    document.getElementById('phraseEditTitle').textContent = '修改词组';
+    document.getElementById('phraseEngInput').value = item.eng;
+    document.getElementById('phraseChnInput').value = item.chn;
+    document.getElementById('phraseEditDeleteBtn').style.display = 'none';   // 背诵中不提供删除，避免误删打断会话
+    openSheet('phraseEditMask');
 }
 function openBook(id) {
     if (sessionMode !== null) { stopTimer(); sessionMode = null; setTabbar(true); }
@@ -1797,14 +1838,19 @@ function splitPos(text) {
     if (!tokens.length) return { word: s, pos: '' };  // 整串都是词性或单个词，别误拆
     return { word: tokens.join(' '), pos: pos.join(' ') };
 }
-function renderCard() {
-    if (currentList.length === 0) return;
+function refreshCardText() {
     const item = currentList[currentIndex];
+    if (!item) return '';
     const { word, pos } = splitPos(item.eng);
     const front = document.getElementById("cardFront");
     front.textContent = word;
     front.classList.toggle('small', word.length > 24);
     document.getElementById("cardBack").textContent = (pos ? pos + ' ' : '') + item.chn;
+    return word;
+}
+function renderCard() {
+    if (currentList.length === 0) return;
+    const word = refreshCardText();
     setPhase('recall');
     updateFavBtn();
     if (settings.autoSpeak) speak(word);
