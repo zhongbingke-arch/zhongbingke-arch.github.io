@@ -632,6 +632,16 @@ svg.ic { display: block; }
     transition: transform 0.15s;
 }
 .edit-btn:active { transform: scale(0.9); }
+.del-btn {
+    position: absolute; top: 12px; right: 156px; z-index: 8;
+    width: 40px; height: 40px;
+    border: none; background: none; padding: 0;
+    cursor: pointer;
+    color: var(--red);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s;
+}
+.del-btn:active { transform: scale(0.9); }
 
 /* 收藏本 */
 .fav-multibtn {
@@ -851,6 +861,7 @@ svg.ic { display: block; }
                     <button class="undo-btn" id="undoBtn" onclick="undoLast()" style="display:none">↩</button>
                     <button class="fav-btn" id="favBtn" onclick="event.stopPropagation(); toggleFav()">☆</button>
                     <button class="edit-btn" id="editBtn" onclick="event.stopPropagation(); openStudyEdit()" title="修改">✎</button>
+                    <button class="del-btn" id="delBtn" onclick="event.stopPropagation(); deleteCurrent()" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;display:block"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
                     <button class="speak-btn" id="speakBtn" onclick="event.stopPropagation(); speakCurrent()"><svg class="ic" viewBox="0 0 48 48"><ellipse cx="24" cy="43.5" rx="17" ry="4.5" fill="#d94a4a" opacity="0.30"/><rect x="3" y="3" width="42" height="42" rx="13" fill="url(#ic-volume)"/><rect x="7" y="5" width="34" height="9" rx="4.5" fill="#fff" opacity="0.32"/><g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></g></svg></button>
                     <div class="big-word" id="cardFront">点击开始</div>
                     <div class="big-hint">先回想含义，再在下方选择</div>
@@ -1829,12 +1840,18 @@ function updateTimerText() {}
 // 词性缩写列表（把 eng 里词性拆出来、移到释义行显示，不改存储数据）
 const POS_TAGS = ['vt', 'vi', 'v', 'n', 'adj', 'adv', 'prep', 'conj', 'pron', 'num', 'art', 'interj', 'aux', 'abbr', 'pl', 'sing', 'phr'];
 function splitPos(text) {
-    const s = String(text).trim();
+    let s = String(text).trim();
+    s = s.replace(/\s*\/\s*/g, '/');   // 斜杠两侧空格去掉（"n. / v." → "n./v."），便于整体识别组合词性
     const tokens = s.split(/\s+/);
     const norm = (t) => t.toLowerCase().replace(/\.+$/, '');
+    // 一个 token 是否整体是词性（支持斜杠组合：n./v.、adj./adv.、v./n 等）
+    const isPos = (t) => {
+        const parts = String(t).split('/').map(norm);
+        return parts.length > 0 && parts.every(p => p !== '' && POS_TAGS.includes(p));
+    };
     const pos = [];
-    while (tokens.length && POS_TAGS.includes(norm(tokens[tokens.length - 1]))) pos.unshift(tokens.pop());
-    while (tokens.length && POS_TAGS.includes(norm(tokens[0]))) pos.push(tokens.shift());
+    while (tokens.length && isPos(tokens[tokens.length - 1])) pos.unshift(tokens.pop());
+    while (tokens.length && isPos(tokens[0])) pos.push(tokens.shift());
     if (!tokens.length) return { word: s, pos: '' };  // 整串都是词性或单个词，别误拆
     return { word: tokens.join(' '), pos: pos.join(' ') };
 }
@@ -1868,6 +1885,27 @@ function updateFavBtn() {
     const item = currentList[currentIndex];
     const btn = document.getElementById('favBtn');
     if (btn && item) btn.textContent = item.fav ? '⭐' : '☆';
+}
+// 背诵中删除当前词：从所属书本彻底移除，并把它移出当前学习队列
+function deleteCurrent() {
+    const item = currentList[currentIndex]; if (!item) return;
+    if (!confirm('删除这个词组吗？')) return;
+    // 找到所属书本删除（随机复习/全库随机里这个词可能来自任意一本书）
+    books.forEach(b => { const i = b.phrases.indexOf(item); if (i >= 0) b.phrases.splice(i, 1); });
+    // 移出当前学习队列
+    const li = currentList.indexOf(item);
+    if (li >= 0) currentList.splice(li, 1);
+    lastAction = null;   // 删除不参与「返回上一个词」撤销
+    saveBooks();
+    if (currentList.length === 0) {
+        setRoundDoneHint();
+        openSheet('roundDoneMask');
+    } else {
+        if (currentIndex >= currentList.length) currentIndex = 0;
+        renderCard();
+    }
+    updateStats();
+    toast('已删除');
 }
 // —— 两阶段流程：回想 → 看答案/确认 → 打分（学习新词用 认识/不认识，复习用 4 档）——
 function setPhase(p) {
@@ -2370,6 +2408,7 @@ function importWords() {
     document.getElementById("inputArea").value = "";
     closeSheet('sheetMask');
     renderDashboard();
+    renderBooks();
     toast(`导入 ${newCount} 条词组`);
 }
 
