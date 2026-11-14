@@ -118,6 +118,9 @@ html, body {
     box-shadow: 0 12px 28px rgba(80, 110, 180, 0.20);
     cursor: pointer;
     overflow: hidden;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
     transition: transform 0.15s, box-shadow 0.15s;
 }
 .book-cover:active { transform: scale(0.97); }
@@ -175,6 +178,36 @@ html, body {
 }
 .book-add:active { transform: scale(0.97); }
 .book-add .plus { font-size: 34px; font-weight: 300; }
+/* 分类筛选 */
+.catbar { display: flex; gap: 8px; overflow-x: auto; padding: 6px 2px 12px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.catbar::-webkit-scrollbar { display: none; }
+.cat-chip {
+    flex-shrink: 0; border: 1px solid var(--line); background: var(--surface);
+    backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+    color: var(--text-2); font-size: 13px; font-weight: 700;
+    padding: 7px 14px; border-radius: 999px; cursor: pointer;
+}
+.cat-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.book-cat {
+    display: inline-flex; align-items: center; align-self: flex-start;
+    margin-top: 6px; padding: 3px 10px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.25); color: #fff; font-size: 11px; font-weight: 700;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.book-name { cursor: pointer; }
+.book-name::after { content: " ✎"; opacity: 0.65; font-size: 13px; font-weight: 400; }
+.book-cover.dragging {
+    z-index: 1000; transition: none; cursor: grabbing; touch-action: none;
+    box-shadow: 0 24px 48px rgba(60, 90, 170, 0.42);
+}
+body.manual-sort .book-cover { touch-action: none; }
+/* 合并 */
+.merge-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; max-height: 46vh; overflow-y: auto; }
+.merge-opt { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; cursor: pointer; }
+.merge-opt input { width: 18px; height: 18px; accent-color: var(--accent); }
+.merge-name { font-weight: 700; color: var(--text); flex: 1; }
+.merge-meta { font-size: 12px; color: var(--text-3); }
+.merge-note { font-size: 12px; color: var(--text-3); line-height: 1.6; }
 
 /* ============ 学习页 - 面板 ============ */
 .study-dash { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding-top: 6px; }
@@ -791,10 +824,12 @@ svg.ic { display: block; }
             <div class="fav-multibar" id="bookMultiBar" style="display:none">
                 <span class="fav-multicount" id="bookMultiCount">已选 0 本</span>
                 <div style="display:flex;gap:8px">
+                    <button class="btn ghost" id="bookMergeBtn" style="display:none" onclick="mergeSelectedBooks()">合并</button>
                     <button class="btn-primary" onclick="deleteSelectedBooks()">删除选中</button>
                     <button class="btn ghost" onclick="toggleBookMulti()">完成</button>
                 </div>
             </div>
+            <div class="catbar" id="catBar"></div>
             <div class="books-grid" id="bookGrid"></div>
             <div class="empty" id="booksEmpty" style="display:none">
                 <div class="emoji">📚</div>
@@ -999,12 +1034,29 @@ above all 首先，尤其是"></textarea>
         <div class="s-title" id="bookSheetTitle">新建书本</div>
         <div class="s-label">书本名字</div>
         <input class="field" id="bookNameInput" placeholder="例如：四级词组" maxlength="20">
+        <div class="s-label">分类（选填）</div>
+        <input class="field" id="bookCatInput" placeholder="如：四级 / 考研 / 自己起名" list="bookCatList" maxlength="12">
+        <datalist id="bookCatList"></datalist>
         <div class="s-label">封面样式</div>
         <div class="cover-picker" id="bookCoverPicker"></div>
         <div class="s-btns">
             <button class="btn" onclick="saveBook()">保存</button>
             <button class="btn ghost" onclick="closeSheet('bookSheetMask')">取消</button>
             <button class="btn danger" id="bookDeleteBtn" style="display:none" onclick="deleteBook()">删除书本</button>
+        </div>
+    </div>
+</div>
+
+<!-- 合并书本 -->
+<div class="sheet-mask" id="mergeSheetMask" onclick="if(event.target===this) closeSheet('mergeSheetMask')">
+    <div class="sheet">
+        <div class="s-title">合并书本</div>
+        <div class="merge-note" id="mergeCount"></div>
+        <div class="merge-list" id="mergeList"></div>
+        <div class="merge-note">重复的词会保留学习进度更高的一条；被合并的书会删除，学习时长累加到保留的书。</div>
+        <div class="s-btns">
+            <button class="btn" onclick="confirmMerge()">合并</button>
+            <button class="btn ghost" onclick="closeSheet('mergeSheetMask')">取消</button>
         </div>
     </div>
 </div>
@@ -1235,9 +1287,13 @@ let learnDone = 0;      // 学习任务已学完的新词数（跨会话保留�
 let editingBookId = null;
 let importTargetId = null;
 let selectedCover = 0;
-let bookSortDesc = true;
+let bookSortMode = 'desc';
+let bookCategoryFilter = '';
 let bookMultiSelect = false;
 let bookSelected = new Set();
+let drag = null;
+let longPressTimer = null;
+let suppressNextClick = false;
 let phraseBookId = null;
 let phraseMultiSelect = false;
 let phraseSelected = new Set();
@@ -1304,7 +1360,10 @@ function migratePhrases() {
 }
 function migrateBooks() {
     let changed = false;
-    books.forEach(b => { if (!b.createdAt) { b.createdAt = Date.now(); changed = true; } });
+    books.forEach(b => {
+        if (!b.createdAt) { b.createdAt = Date.now(); changed = true; }
+        if (b.category === undefined) { b.category = ''; changed = true; }
+    });
     if (changed) saveBooks();
 }
 // 一次性修复：旧版「忘记」会把学过的词误重置成 status=0 / nextReview=null（掉进学习新词）。
@@ -1339,29 +1398,60 @@ function openSheet(id) { document.getElementById(id).classList.add('show'); }
 function closeSheet(id) { document.getElementById(id).classList.remove('show'); }
 
 // ============ 书本管理 ============
+function allCategories() {
+    const set = new Set();
+    books.forEach(b => { if (b.category) set.add(b.category); });
+    return [...set].sort();
+}
+function renderCatBar() {
+    const bar = document.getElementById('catBar');
+    if (bar) {
+        const cats = allCategories();
+        const chip = (label, active) => `<button class="cat-chip${active ? ' active' : ''}" onclick="setBookCategory('${escapeAttr(label)}')">${escapeHtml(label)}</button>`;
+        bar.innerHTML = chip('全部', !bookCategoryFilter) + cats.map(c => chip(c, c === bookCategoryFilter)).join('');
+    }
+    const dl = document.getElementById('bookCatList');
+    if (dl) dl.innerHTML = allCategories().map(c => `<option value="${escapeAttr(c)}"></option>`).join('');
+}
+function setBookCategory(cat) {
+    bookCategoryFilter = cat || '';
+    renderBooks();
+}
+function getSortedBooks() {
+    let list = [...books];
+    if (bookCategoryFilter) list = list.filter(b => (b.category || '') === bookCategoryFilter);
+    if (bookSortMode !== 'manual') {
+        list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        if (bookSortMode === 'desc') list.reverse();
+    }
+    return list;
+}
 function renderBooks() {
     const grid = document.getElementById('bookGrid');
     const empty = document.getElementById('booksEmpty');
+    document.body.classList.toggle('manual-sort', bookSortMode === 'manual' && !bookCategoryFilter);
+    renderCatBar();
     if (!books.length) {
         grid.innerHTML = '';
         empty.style.display = 'flex';
         return;
     }
     empty.style.display = 'none';
-    const sorted = [...books].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    if (bookSortDesc) sorted.reverse();
+    const sorted = getSortedBooks();
     grid.innerHTML = sorted.map(b => {
         const c = COVERS[b.cover % COVERS.length];
         const total = b.phrases.length;
         const know = b.phrases.filter(p => p.status === 1).length;
         const fresh = b.phrases.filter(p => p.status === 0).length;
         const sel = bookSelected.has(b.id);
-        return `<div class="book-cover${sel ? ' book-sel' : ''}" style="background:${c.bg}" onclick="${bookMultiSelect ? `toggleBookSelect('${b.id}')` : `openBook('${b.id}')`}">
+        const nameClick = bookMultiSelect ? '' : ` onclick="event.stopPropagation(); quickRenameBook('${b.id}')" title="点我改名"`;
+        return `<div class="book-cover${sel ? ' book-sel' : ''}" data-id="${b.id}" style="background:${c.bg}" onclick="${bookMultiSelect ? `toggleBookSelect('${b.id}')` : `openBook('${b.id}')`}">
             ${bookMultiSelect ? `<span class="book-check">${sel ? '✓' : ''}</span>` : `<button class="book-more" onclick="event.stopPropagation(); editBook('${b.id}')">⋯</button>`}
-            <div class="book-name">${escapeHtml(b.name)}</div>
+            <div class="book-name"${nameClick}>${escapeHtml(b.name)}</div>
             <div class="book-emblem"><svg class="ic" viewBox="0 0 48 48"><ellipse cx="24" cy="43.5" rx="17" ry="4.5" fill="#179596" opacity="0.30"/><rect x="3" y="3" width="42" height="42" rx="13" fill="url(#ic-study)"/><rect x="7" y="5" width="34" height="9" rx="4.5" fill="#fff" opacity="0.32"/><g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></g></svg></div>
             <div class="book-meta">${total} 词 · 掌握 ${know} · 未学 ${fresh}</div>
             <div class="book-time">录入 ${fmtDate(b.createdAt)}</div>
+            ${b.category ? `<div class="book-cat">${escapeHtml(b.category)}</div>` : ''}
             ${bookMultiSelect ? '' : `<div class="book-actions"><button class="book-import" onclick="event.stopPropagation(); openPhraseList('${b.id}')">词组</button><button class="book-import" onclick="event.stopPropagation(); importToBook('${b.id}')">＋ 导入</button></div>`}
         </div>`;
     }).join('') + (bookMultiSelect ? '' : `<div class="book-add" onclick="createBook()"><span class="plus">＋</span>新建书本</div>`);
@@ -1372,6 +1462,7 @@ function createBook() {
     selectedCover = Math.floor(Math.random() * COVERS.length);
     document.getElementById('bookSheetTitle').textContent = '新建书本';
     document.getElementById('bookNameInput').value = '';
+    document.getElementById('bookCatInput').value = '';
     document.getElementById('bookDeleteBtn').style.display = 'none';
     renderCoverPicker();
     openSheet('bookSheetMask');
@@ -1383,9 +1474,16 @@ function editBook(id) {
     selectedCover = b.cover;
     document.getElementById('bookSheetTitle').textContent = '编辑书本';
     document.getElementById('bookNameInput').value = b.name;
+    document.getElementById('bookCatInput').value = b.category || '';
     document.getElementById('bookDeleteBtn').style.display = 'flex';
     renderCoverPicker();
     openSheet('bookSheetMask');
+}
+function quickRenameBook(id) {
+    const b = books.find(x => x.id === id);
+    if (!b) return;
+    editBook(id);
+    setTimeout(() => { const inp = document.getElementById('bookNameInput'); if (inp) { inp.focus(); inp.select(); } }, 200);
 }
 function renderCoverPicker() {
     document.getElementById('bookCoverPicker').innerHTML = COVERS.map((c, i) =>
@@ -1396,11 +1494,12 @@ function pickCover(i) { selectedCover = i; renderCoverPicker(); }
 function saveBook() {
     const name = document.getElementById('bookNameInput').value.trim();
     if (!name) { toast('请输入书本名字'); return; }
+    const cat = document.getElementById('bookCatInput').value.trim();
     if (editingBookId) {
         const b = books.find(x => x.id === editingBookId);
-        if (b) { b.name = name; b.cover = selectedCover; }
+        if (b) { b.name = name; b.cover = selectedCover; b.category = cat; }
     } else {
-        const nb = { id: genId(), name: name, cover: selectedCover, phrases: [], createdAt: Date.now() };
+        const nb = { id: genId(), name: name, cover: selectedCover, phrases: [], createdAt: Date.now(), category: cat };
         books.push(nb);
         currentBookId = nb.id;
     }
@@ -1431,9 +1530,14 @@ function fmtDate(ts) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 function toggleBookSort() {
-    bookSortDesc = !bookSortDesc;
-    document.getElementById('bookSortBtn').textContent = bookSortDesc ? '最新在前' : '最旧在前';
+    const order = ['desc', 'asc', 'manual'];
+    bookSortMode = order[(order.indexOf(bookSortMode) + 1) % order.length];
+    updateBookSortBtn();
     renderBooks();
+}
+function updateBookSortBtn() {
+    const labels = { desc: '最新在前', asc: '最旧在前', manual: '手动排序' };
+    document.getElementById('bookSortBtn').textContent = labels[bookSortMode] || '最新在前';
 }
 function toggleBookMulti() {
     bookMultiSelect = !bookMultiSelect;
@@ -1451,6 +1555,8 @@ function toggleBookSelect(id) {
 }
 function updateBookMultiCount() {
     document.getElementById('bookMultiCount').textContent = '已选 ' + bookSelected.size + ' 本';
+    const mb = document.getElementById('bookMergeBtn');
+    if (mb) mb.style.display = bookSelected.size >= 2 ? 'flex' : 'none';
 }
 function deleteSelectedBooks() {
     if (bookSelected.size === 0) { toast('请先选择要删除的书'); return; }
@@ -1469,6 +1575,130 @@ function deleteSelectedBooks() {
     switchTab('pageBooks');
     toast('已删除');
 }
+
+// —— 书合并 ——
+function phraseScore(p) {
+    return (p.status === 1 ? 100000 : 0) + (p.level || 0) * 1000 + (p.fav ? 100 : 0);
+}
+function mergeSelectedBooks() {
+    if (bookSelected.size < 2) { toast('至少选 2 本书才能合并'); return; }
+    const ids = [...bookSelected];
+    const list = document.getElementById('mergeList');
+    list.innerHTML = ids.map((id, i) => {
+        const b = books.find(x => x.id === id);
+        return `<label class="merge-opt"><input type="radio" name="mergeTarget" value="${id}" ${i === 0 ? 'checked' : ''}><span class="merge-name">${escapeHtml(b.name)}</span><span class="merge-meta">${b.phrases.length} 词</span></label>`;
+    }).join('');
+    document.getElementById('mergeCount').textContent = `把另外 ${ids.length - 1} 本书并入「保留」的那本：`;
+    openSheet('mergeSheetMask');
+}
+function confirmMerge() {
+    const targetId = document.querySelector('input[name="mergeTarget"]:checked')?.value;
+    if (!targetId) { toast('请选择保留哪本'); return; }
+    const target = books.find(b => b.id === targetId);
+    if (!target) return;
+    const srcs = [...bookSelected].filter(id => id !== targetId);
+    srcs.forEach(sid => {
+        const src = books.find(b => b.id === sid);
+        if (!src) return;
+        src.phrases.forEach(p => {
+            const dup = target.phrases.find(t => t.eng === p.eng);
+            if (!dup) { target.phrases.push(p); }
+            else if (phraseScore(p) > phraseScore(dup)) {
+                target.phrases[target.phrases.indexOf(dup)] = p;
+            }
+        });
+        bookTimeLog[targetId] = (bookTimeLog[targetId] || 0) + (bookTimeLog[sid] || 0);
+        delete bookTimeLog[sid];
+    });
+    books = books.filter(b => !bookSelected.has(b.id) || b.id === targetId);
+    if (currentBookId && !books.find(b => b.id === currentBookId)) currentBookId = books.length ? books[0].id : null;
+    saveBooks();
+    saveBookTimeLog();
+    bookSelected.clear();
+    bookMultiSelect = false;
+    document.getElementById('bookMultiBtn').textContent = '多选';
+    document.getElementById('bookMultiBar').style.display = 'none';
+    closeSheet('mergeSheetMask');
+    renderBooks();
+    renderDashboard();
+    switchTab('pageBooks');
+    toast(`已合并 ${srcs.length} 本书到「${target.name}」`);
+}
+
+// —— 拖动排序（长按书卡后拖动）——
+function onBookPointerDown(e) {
+    if (bookMultiSelect || bookSortMode !== 'manual' || bookCategoryFilter) return;
+    const el = e.target && e.target.closest ? e.target.closest('.book-cover') : null;
+    if (!el) return;
+    const id = el.dataset.id;
+    if (!books.find(b => b.id === id)) return;
+    drag = { pointerId: e.pointerId, el, id, startX: e.clientX, startY: e.clientY, active: false, moved: false, lastX: e.clientX, lastY: e.clientY };
+    clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(() => {
+        if (!drag) return;
+        drag.active = true;
+        drag.el.classList.add('dragging');
+        try { drag.el.setPointerCapture(drag.pointerId); } catch (err) {}
+        if (navigator.vibrate) { try { navigator.vibrate(12); } catch (err) {} }
+    }, 300);
+}
+function onBookPointerMove(e) {
+    if (!drag) return;
+    if (!drag.active) {
+        const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+        if (dx * dx + dy * dy > 64) { clearTimeout(longPressTimer); drag = null; }
+        return;
+    }
+    if (e.pointerId !== drag.pointerId) return;
+    e.preventDefault();
+    const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+    drag.moved = drag.moved || (dx * dx + dy * dy > 16);
+    drag.lastX = e.clientX; drag.lastY = e.clientY;
+    drag.el.style.transform = `translate(${dx}px, ${dy}px) scale(1.05)`;
+}
+function onBookPointerUp(e) {
+    if (!drag) return;
+    if (drag.active && e.pointerId === drag.pointerId) finishDrag();
+    clearTimeout(longPressTimer);
+    drag = null;
+}
+function onBookPointerCancel(e) {
+    if (drag && drag.active && e.pointerId === drag.pointerId) {
+        drag.el.classList.remove('dragging');
+        drag.el.style.transform = '';
+    }
+    clearTimeout(longPressTimer);
+    drag = null;
+}
+function finishDrag() {
+    const el = drag.el;
+    el.classList.remove('dragging');
+    el.style.transform = '';
+    suppressNextClick = true;
+    if (!drag.moved) return;
+    const target = computeDragTargetIndex(drag.lastX, drag.lastY);
+    const dragged = books.find(b => b.id === drag.id);
+    if (!dragged) return;
+    books = books.filter(b => b.id !== drag.id);
+    if (target >= books.length) books.push(dragged);
+    else books.splice(target, 0, dragged);
+    saveBooks();
+    renderBooks();
+}
+function computeDragTargetIndex(px, py) {
+    const cards = [...document.querySelectorAll('#bookGrid .book-cover')].filter(c => c !== drag.el);
+    let count = 0;
+    for (const c of cards) {
+        const r = c.getBoundingClientRect();
+        const cy = r.top + r.height / 2;
+        const cx = r.left + r.width / 2;
+        const sameRow = Math.abs(py - cy) < r.height * 0.6;
+        const before = sameRow ? (px < cx) : (py < cy);
+        if (before) count++;
+    }
+    return count;
+}
+
 function openPhraseList(id) {
     const b = books.find(x => x.id === id);
     if (!b) return;
@@ -2735,6 +2965,17 @@ window.onload = function () {
         vp.addEventListener('touchend', wheelTouchEnd);
         vp.addEventListener('touchcancel', wheelTouchEnd);
     }
+    // 书库拖动排序
+    const bookGridEl = document.getElementById('bookGrid');
+    if (bookGridEl) {
+        bookGridEl.addEventListener('pointerdown', onBookPointerDown);
+        window.addEventListener('pointermove', onBookPointerMove, { passive: false });
+        window.addEventListener('pointerup', onBookPointerUp);
+        window.addEventListener('pointercancel', onBookPointerCancel);
+    }
+    document.addEventListener('click', (e) => {
+        if (suppressNextClick) { e.stopPropagation(); e.preventDefault(); suppressNextClick = false; }
+    }, true);
 };
 
 document.addEventListener('keydown', (e) => {
