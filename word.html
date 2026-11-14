@@ -147,7 +147,7 @@ html, body {
 .book-cover.book-sel { box-shadow: 0 0 0 3px #fff, 0 12px 28px rgba(80, 110, 180, 0.30); }
 .book-cover.book-sel .book-check { background: var(--accent); }
 .book-more {
-    position: absolute; top: 10px; right: 10px;
+    position: absolute; top: 10px; right: 10px; z-index: 9;
     width: 30px; height: 30px; border-radius: 50%;
     border: none; background: rgba(255, 255, 255, 0.26);
     color: #fff; font-size: 16px; cursor: pointer;
@@ -194,7 +194,7 @@ html, body {
     background: rgba(255, 255, 255, 0.25); color: #fff; font-size: 11px; font-weight: 700;
     max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.book-name { cursor: pointer; }
+.book-name { cursor: pointer; z-index: 9; }
 .book-name::after { content: " ✎"; opacity: 0.65; font-size: 13px; font-weight: 400; }
 .book-cover.dragging {
     z-index: 1000; transition: none; cursor: grabbing; touch-action: none;
@@ -1408,7 +1408,7 @@ function renderCatBar() {
     if (bar) {
         const cats = allCategories();
         const chip = (label, active) => `<button class="cat-chip${active ? ' active' : ''}" onclick="setBookCategory('${escapeAttr(label)}')">${escapeHtml(label)}</button>`;
-        bar.innerHTML = chip('全部', !bookCategoryFilter) + cats.map(c => chip(c, c === bookCategoryFilter)).join('');
+        bar.innerHTML = `<button class="cat-chip${!bookCategoryFilter ? ' active' : ''}" onclick="setBookCategory('')">全部</button>` + cats.map(c => chip(c, c === bookCategoryFilter)).join('');
     }
     const dl = document.getElementById('bookCatList');
     if (dl) dl.innerHTML = allCategories().map(c => `<option value="${escapeAttr(c)}"></option>`).join('');
@@ -1534,6 +1534,7 @@ function toggleBookSort() {
     bookSortMode = order[(order.indexOf(bookSortMode) + 1) % order.length];
     updateBookSortBtn();
     renderBooks();
+    if (bookSortMode === 'manual') toast('手动排序：长按书卡，拖动到目标位置松手');
 }
 function updateBookSortBtn() {
     const labels = { desc: '最新在前', asc: '最旧在前', manual: '手动排序' };
@@ -1638,6 +1639,7 @@ function onBookPointerDown(e) {
         if (!drag) return;
         drag.active = true;
         drag.el.classList.add('dragging');
+        drag.el.style.transform = 'scale(1.06)';
         try { drag.el.setPointerCapture(drag.pointerId); } catch (err) {}
         if (navigator.vibrate) { try { navigator.vibrate(12); } catch (err) {} }
     }, 300);
@@ -1661,6 +1663,7 @@ function onBookPointerUp(e) {
     if (drag.active && e.pointerId === drag.pointerId) finishDrag();
     clearTimeout(longPressTimer);
     drag = null;
+    setTimeout(() => { suppressNextClick = false; }, 0);
 }
 function onBookPointerCancel(e) {
     if (drag && drag.active && e.pointerId === drag.pointerId) {
