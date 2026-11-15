@@ -1298,6 +1298,7 @@ let lastAction = null;   // 撤销上一个打分用的快照
 let learnDone = 0;      // 学习任务已学完的新词数（跨会话保留）
 let editingBookId = null;
 let importTargetId = null;
+let reviewPickIds = null;   // >300 复习选书：本轮选中的书 id，用于一轮轮定量复习；null=未选
 let selectedCover = 0;
 let bookSortMode = 'desc';
 let bookCategoryFilter = '';
@@ -1908,10 +1909,20 @@ function startLearn() {
 }
 function startReview() {
     const allDue = dueList(books.flatMap(b => b.phrases));
-    if (allDue.length > 300) { openReviewPicker(); return; }
-    let list = dueList(ph());
+    if (allDue.length > 300 && !reviewPickIds) { openReviewPicker(); return; }
+    // 有选中书（>300 选书流程）就只复习这些书；否则复习当前书
+    const pool = reviewPickIds
+        ? books.filter(b => reviewPickIds.includes(b.id)).flatMap(b => b.phrases)
+        : ph();
+    let list = dueList(pool);
     list.sort((a, b) => (b.fav ? 1 : 0) - (a.fav ? 1 : 0));
     list = list.slice(0, settings.reviewCount || undefined);
+    if (reviewPickIds && list.length === 0) {   // 选中的书已复习完：回选书或收尾
+        reviewPickIds = null;
+        if (dueList(books.flatMap(b => b.phrases)).length > 300) { openReviewPicker(); return; }
+        toast('选中的书都复习完啦 🎉');
+        return;
+    }
     enterSession(list, '复习旧词', 'review');
 }
 function openReviewPicker() {
@@ -1928,11 +1939,14 @@ function openReviewPicker() {
 }
 function startSelectedReview() {
     const checked = [...document.querySelectorAll('#reviewPickerList .picker-check:checked')].map(c => c.value);
-    const list = [];
-    books.forEach(b => { if (checked.includes(b.id)) b.phrases.forEach(p => { if (isDue(p)) list.push(p); }); });
     closeSheet('reviewPickerMask');
-    if (list.length === 0) { toast('所选书本没有到期需要复习的词'); return; }
+    if (checked.length === 0) { toast('请至少选择一本书'); return; }
+    reviewPickIds = checked;   // 记住选中，之后一轮轮定量复习
+    const pool = books.filter(b => checked.includes(b.id)).flatMap(b => b.phrases);
+    let list = dueList(pool);
+    if (list.length === 0) { reviewPickIds = null; toast('所选书本没有到期需要复习的词'); return; }
     list.sort((a, b) => (b.fav ? 1 : 0) - (a.fav ? 1 : 0));
+    list = list.slice(0, settings.reviewCount || undefined);   // 定量：一轮只复习 reviewCount 个
     enterSession(list, '复习旧词', 'review');
 }
 function startRandomBook() {
@@ -1960,7 +1974,7 @@ function enterSession(list, title, mode, startIndex) {
     if (list.length === 0) { toast(mode === 'new' ? '没有新词了 🎉' : '没有可复习的词'); return; }
     if (settings.shuffle) shuffleArray(list);
     currentList = list;
-    list.forEach(p => { p.need = 1; p.rc = 0; });   // 每轮复习重计过关进度（弱词反复用）
+    list.forEach(p => { p.need = 1; p.rc = 0; p.worst = 0; });   // 每轮复习重计过关进度（弱词反复用）
     currentIndex = Math.min(startIndex || 0, list.length - 1);
     phase = 'recall'; pending = null;
     sessionMode = mode;
@@ -1983,6 +1997,7 @@ function setTabbar(visible) {
 function exitSession(skipSummary) {
     stopTimer();
     sessionMode = null;
+    reviewPickIds = null;   // 退出时清掉选书记忆，下次从头开始
     setTabbar(true);
     renderDashboard();
     updateStats();
@@ -2245,19 +2260,19 @@ function confirmNext() {
 }
 
 // —— 复习：认识/模糊/忘记三档，弱词反复直到连续答对过关 ——
-// 过关需连续答对次数 need：初始 1；「模糊」提到 2；「忘记」提到 3（像学习新词，连续答对 3 次才过）
-function scheduleReview(item, need) {
-    if (need === 3) {           // 忘记后答对：间隔回到明天，难度略降
-        item.status = 1;
+// 过关需连续答对次数 need：初始 1；「模糊」保持 1（下次答对即过）；「忘记」提到 2
+// worst 记录本轮最差档（0 认识 / 1 模糊 / 2 忘记），过关后据此排期
+function scheduleReview(item, worst) {
+    item.status = 1;
+    if (worst === 2) {          // 忘记后答对：间隔回退一半（最低 1 天），难度略降
         item.ease = Math.max(1.3, (item.ease || 2.5) - 0.2);
-        item.interval = 1;
-    } else if (need === 2) {    // 模糊后答对：间隔小步进、难度略降
-        item.status = 1;
+        item.interval = Math.max(1, Math.round((item.interval || 1) / 2));
+    } else if (worst === 1) {   // 模糊后答对：间隔小步进（×1.5），难度略降
         item.ease = Math.max(1.3, (item.ease || 2.5) - 0.1);
-        item.interval = Math.max(1, Math.round((item.interval || 1) * 1.2));
+        item.interval = Math.max(1, Math.round((item.interval || 1) * 1.5));
         item.level = (item.level || 0) + 1;
-    } else {                    // 干净「认识」：按难度系数推进间隔
-        item.status = 1;
+    } else {                    // 干净「认识」：按难度系数推进间隔，难度逐步回升
+        item.ease = Math.min(2.5, (item.ease || 2.5) + 0.1);
         item.interval = Math.max(1, Math.round((item.interval || 1) * (item.ease || 2.5)));
         item.level = (item.level || 0) + 1;
     }
@@ -2267,19 +2282,22 @@ function applyReviewAnswer(item, q) {
     const prev = snapPhrase(item);
     let need = item.need || 1;
     let rc = item.rc || 0;
+    let worst = item.worst || 0;   // 本轮最差档 0=认识 1=模糊 2=忘记，过关后排期用
     let pass = false;
-    if (q === 0) {              // 忘记 → 像学习新词：需连续答对 3 次「认识」才过关，插回队尾
-        need = 3; rc = 0;
-    } else if (q === 1) {       // 模糊 → 过关门槛提到连对 2 次，插回队尾
+    if (q === 0) {              // 忘记 → 需连续答对 2 次「认识」才过关，插回队尾
+        worst = 2;
         need = Math.max(need, 2); rc = 0;
+    } else if (q === 1) {       // 模糊 → 下次答对「认识」即过关，插回队尾
+        worst = Math.max(worst, 1);
+        rc = 0;
     } else {                    // 认识 → 累计连续答对，够 need 次才过关
         rc += 1;
         pass = rc >= need;
     }
-    item.need = need; item.rc = rc;
+    item.need = need; item.rc = rc; item.worst = worst;
     lastAction = { item: item, prev: prev, kind: pass ? 'remove' : 'requeue', learned: learnedInSession, mc: modeCount(sessionMode), mcMode: sessionMode };
     if (pass) {
-        scheduleReview(item, need);
+        scheduleReview(item, worst);
         bumpModeCount(sessionMode);                 // 复习过关一个词
         currentList.shift();                        // 过关 → 移出队列
     } else {
@@ -2326,7 +2344,7 @@ function applyNewAnswer(item, correct) {
     updateStats();
 }
 function snapPhrase(p) {
-    return { streak: p.streak, status: p.status, level: p.level, ease: p.ease, interval: p.interval, nextReview: p.nextReview, need: p.need, rc: p.rc };
+    return { streak: p.streak, status: p.status, level: p.level, ease: p.ease, interval: p.interval, nextReview: p.nextReview, need: p.need, rc: p.rc, worst: p.worst };
 }
 function undoLast() {
     if (!lastAction) return;
